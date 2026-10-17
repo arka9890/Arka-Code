@@ -163,7 +163,11 @@ class SessionRunRegistry(
         r.liveReasoning.value = ""
         r.liveTools.value = emptyList()
         r.toolLabel.value = null
-        r.preIds = snapshotPreIds(r.messages.value)
+        // Snapshot KETAT (semua id, termasuk assistant menggantung): balasan turn
+        // ini harus berupa assistant BARU, jangan sampai assistant lama yang belum
+        // ber-"finish" dianggap balasan → pollUntilDone langsung break → busy
+        // cepat false, echo hilang, padahal turn masih jalan di server.
+        r.preIds = r.messages.value.mapTo(mutableSetOf()) { it.id }
         r.pollJob?.cancel()
         r.pollJob = scope.launch {
             try {
