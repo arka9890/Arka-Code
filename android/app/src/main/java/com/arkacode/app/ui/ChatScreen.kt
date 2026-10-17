@@ -119,6 +119,7 @@ fun ChatScreen(
     registry: SessionRunRegistry,
     initialProviderID: String?,
     initialModelID: String?,
+    initialAgentID: String? = null,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -142,7 +143,7 @@ fun ChatScreen(
     var showPicker by remember { mutableStateOf(false) }
     var showFilesTab by remember { mutableStateOf(false) }
     var agents by remember { mutableStateOf(listOf<AgentInfo>()) }
-    var agentId by remember { mutableStateOf<String?>(null) }
+    var agentId by remember { mutableStateOf(initialAgentID) }
     var commands by remember { mutableStateOf(listOf<CommandInfo>()) }
     var skills by remember { mutableStateOf(listOf<SkillInfo>()) }
     var showAgents by remember { mutableStateOf(false) }
@@ -232,6 +233,7 @@ fun ChatScreen(
             ModelRef(initialProviderID, initialModelID)
         } else null
         pinnedModel = provided
+        agentId = initialAgentID
         runCatching { client.listAgents() }.getOrNull()?.let { agents = it.filter { a -> !a.hidden } }
         runCatching { client.listCommands() }.getOrNull()?.let { commands = it }
         runCatching { client.listSkills() }.getOrNull()?.let { skills = it }

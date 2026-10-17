@@ -331,6 +331,7 @@ class OpenCodeClient(
                 title = o.str("title") ?: "",
                 providerID = model.str("providerID"),
                 modelID = model.str("id"),
+                agentID = o.str("agent"),
             )
         }
     }

@@ -6,6 +6,8 @@ data class ChatSession(
     val title: String,
     val providerID: String? = null,
     val modelID: String? = null,
+    /** Agent yang di-set eksplisit di sesi ini (null = belum pernah disetel). */
+    val agentID: String? = null,
 )
 
 /** Satu tool-call dalam balasan assistant. */

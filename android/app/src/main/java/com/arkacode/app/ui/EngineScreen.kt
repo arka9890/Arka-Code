@@ -279,6 +279,7 @@ fun EngineScreen(
                     registry = runs,
                     initialProviderID = target.providerID,
                     initialModelID = target.modelID,
+                    initialAgentID = target.agentID,
                     onBack = { chatTarget = null },
                 )
             } else {
