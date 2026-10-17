@@ -370,8 +370,12 @@ class OpenCodeClient(
 
     suspend fun listMessages(sessionId: String, limit: Int = 200): List<ChatItem> =
         withContext(Dispatchers.IO) {
-            val el = call(getReq("/api/session/$sessionId/message?limit=$limit&order=asc"))
-            el.dataArray().mapNotNull { item -> parseMessage(item) }
+            // Server membatasi limit<=200. order=asc akan mengembalikan 200
+            // pesan TERTUA, sehingga pada sesi panjang balasan terbaru tak pernah
+            // tampil ("ga ke sync"). Ambil 200 TERBARU lalu balik untuk tampilan
+            // menaik (terlama -> terbaru) yang dipakai UI.
+            val el = call(getReq("/api/session/$sessionId/message?limit=$limit&order=desc"))
+            el.dataArray().mapNotNull { item -> parseMessage(item) }.asReversed()
         }
 
     private fun parseMessage(item: JsonElement): ChatItem? {
