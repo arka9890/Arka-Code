@@ -1,13 +1,11 @@
 package com.arkacode.app.ui
 
 import android.annotation.SuppressLint
-import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
-import android.os.Environment
 import android.util.Log
 import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
@@ -47,6 +45,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,8 +53,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.arkacode.app.core.ArenaImport
 import com.arkacode.app.core.SessionUiPrefs
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private const val ARENA_URL = "https://arena.ai/"
@@ -136,6 +137,7 @@ class ArenaScreenActivity : ComponentActivity() {
 @Composable
 fun ArenaWebView(onClose: () -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -238,30 +240,31 @@ fun ArenaWebView(onClose: () -> Unit) {
                     mimeType: String?,
                     contentLength: Long
                 ) {
-                    val uri = Uri.parse(url)
-                    val fileName = uri.lastPathSegment ?: "arena-download"
+                    val fileName = ArenaImport.fileNameFrom(contentDisposition)
+                        ?: Uri.parse(url).lastPathSegment
+                        ?: "arena-download"
 
-                    val request = DownloadManager.Request(uri)
-                        .setMimeType(mimeType ?: "*/*")
-                        .setDestinationInExternalPublicDir(
-                            Environment.DIRECTORY_DOWNLOADS,
-                            fileName
-                        )
-                        .setNotificationVisibility(
-                            DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
-                        )
-                        .setTitle("Arena AI Download")
-                        .setDescription("Mengunduh $fileName")
-
-                    val manager =
-                        context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-                    manager.enqueue(request)
-
-                    Toast.makeText(
-                        context,
-                        "Unduhan dimulai: $fileName",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    // Unduh langsung ke workspace proot. DownloadManager tidak bisa
+                    // dipakai: Android 8–10 menolak membaca /Download tanpa izin
+                    // penyimpanan eksternal, dan jalurnya butuh impor manual.
+                    scope.launch {
+                        Toast.makeText(context, "Mengunduh: $fileName", Toast.LENGTH_SHORT).show()
+                        runCatching { ArenaImport.saveToWorkspace(context, url, fileName) }
+                            .onSuccess {
+                                Toast.makeText(
+                                    context,
+                                    "Tersimpan ke workspace: ${it.name}",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                            .onFailure {
+                                Toast.makeText(
+                                    context,
+                                    "Gagal mengunduh $fileName: ${it.message}",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                    }
                 }
             })
 
