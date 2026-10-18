@@ -32,6 +32,13 @@ jobs:
         working-directory: android
         run: chmod +x gradlew && ./gradlew :app:assembleDebug --stacktrace
 
+      # Unit test JVM (tanpa perangkat). Selama ini tak pernah dijalankan CI —
+      # ditambahkan saat Arka Buddy masuk supaya cek regresi murni (PathNames,
+      # ModelSupport, EngineRelease, BuddyFace) benar-benar dieksekusi.
+      - name: Unit test
+        working-directory: android
+        run: ./gradlew :app:testDebugUnitTest --stacktrace
+
       # Task downloadProotBinaries mengambil binary proot dari paket Termux ke
       # jniLibs. Kalau mirror tidak terjangkau, build tetap sukses tanpa dukungan
       # distro (run_command tidak akan jalan) — detailnya ada di log.

@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.OpenInNew
@@ -113,6 +114,7 @@ fun EngineScreen(
     var showProviders by remember { mutableStateOf(false) }
     var showCaps by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showBuddy by remember { mutableStateOf(false) }
     var lines by remember { mutableStateOf(listOf<String>()) }
     var failMsg by remember { mutableStateOf<String?>(null) }
     var working by remember { mutableStateOf(false) }
@@ -252,11 +254,12 @@ fun EngineScreen(
                 // kalau pipeline selesai saat app di-background, jangan crash.
                 runCatching { EngineService.start(context, port, s.version) }
             }
-            BackHandler(enabled = showCaps || showProviders || showSettings || target != null) {
+            BackHandler(enabled = showCaps || showProviders || showSettings || showBuddy || target != null) {
                 when {
                     showCaps -> showCaps = false
                     showProviders -> showProviders = false
                     showSettings -> showSettings = false
+                    showBuddy -> showBuddy = false
                     else -> chatTarget = null
                 }
             }
@@ -289,6 +292,8 @@ fun EngineScreen(
                         }
                     },
                 )
+            } else if (showBuddy) {
+                BuddyScreen(onBack = { showBuddy = false })
             } else if (target != null) {
                 ChatScreen(
                     sessionId = target.id,
@@ -566,6 +571,7 @@ private fun ReadyScreen(
         ClayBottomBar(
             items = listOf(
                 ClayNavItem(Icons.Default.List, I18n.s.navSessions, selected = true, onClick = {}),
+                ClayNavItem(Icons.Default.Face, BuddyText.nav, selected = false, onClick = { showBuddy = true }),
                 ClayNavItem(Icons.Default.SmartToy, I18n.s.navAI, selected = false, onClick = onOpenProviders),
                 ClayNavItem(Icons.Default.Build, I18n.s.navCaps, selected = false, onClick = onOpenCapabilities),
                 ClayNavItem(Icons.Default.Settings, I18n.s.navSettings, selected = false, onClick = onOpenSettings),
