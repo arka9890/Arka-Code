@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
@@ -81,7 +82,7 @@ fun BuddyScreen(
                 mood = BuddyMood.HAPPY
             }.onFailure {
                 mood = BuddyMood.IDLE
-                toast(BuddyVoice.failed(it.message ?: "?"))
+                toast(BuddyText.failed(it.message ?: "?"))
             }
             busy = false
         }
