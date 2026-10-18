@@ -1,6 +1,10 @@
 package com.arkacode.app.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.Manifest
+import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -53,6 +57,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.arkacode.app.core.EngineConfig
 import com.arkacode.app.core.EngineManager
+import com.arkacode.app.core.EngineService
 import com.arkacode.app.core.SessionRunRegistry
 import com.arkacode.app.net.OpenCodeClient
 import com.arkacode.app.net.ChatSession
@@ -232,6 +237,21 @@ fun EngineScreen(
             val target = chatTarget
             val chatClient = remember(port, password) { OpenCodeClient(port = port, password = password) }
             val runs = remember(chatClient) { SessionRunRegistry(scope, chatClient) }
+            // FGS + notifikasi status bar: prioritas proses naik supaya server
+            // tetap hidup saat app masuk background. Izin notifikasi (Android
+            // 13+) diminta sekali; bila ditolak service tetap jalan, hanya
+            // notifikasinya yang disembunyikan sistem.
+            val notifLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission(),
+            ) {}
+            LaunchedEffect(Unit) {
+                if (Build.VERSION.SDK_INT >= 33) {
+                    notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+                // runCatching: Android 12+ melarang start FGS dari background —
+                // kalau pipeline selesai saat app di-background, jangan crash.
+                runCatching { EngineService.start(context, port, s.version) }
+            }
             BackHandler(enabled = showCaps || showProviders || showSettings || target != null) {
                 when {
                     showCaps -> showCaps = false
@@ -307,6 +327,7 @@ fun EngineScreen(
             }
         }
         Screen.Stopped -> {
+            LaunchedEffect(Unit) { EngineService.stop(context) }
             val listState = rememberLazyListState()
             LaunchedEffect(lines.size) {
                 if (lines.isNotEmpty()) listState.scrollToItem(lines.size - 1)

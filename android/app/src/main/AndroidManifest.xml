@@ -2,6 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:name=".ArkacodeApp"
@@ -28,6 +32,16 @@
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:theme="@style/Theme.Arkacode" />
+        <!-- FGS tipe specialUse: server opencode lokal yang jalan tanpa batas
+             waktu (dataSync punya limit 6 jam di Android 15+). -->
+        <service
+            android:name=".core.EngineService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Local opencode server runs indefinitely; the service keeps it alive so long-running AI turns finish while the app is backgrounded." />
+        </service>
     </application>
 
 </manifest>

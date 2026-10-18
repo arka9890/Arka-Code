@@ -42,6 +42,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.arkacode.app.core.EngineManager
 import com.arkacode.app.core.EngineRelease
+import com.arkacode.app.core.EngineService
 import com.arkacode.app.core.GitCredentials
 import com.arkacode.app.core.SecureStore
 import com.arkacode.app.core.SessionUiPrefs
@@ -249,6 +250,7 @@ fun SettingsScreen(
                                                 engineMsg = I18n.s.engineUpdating
                                                 val r = withContext(Dispatchers.IO) {
                                                     eng.stopServer()
+                                                    EngineService.stop(context)
                                                     eng.applyUpdate(u)
                                                 }
                                                 engineBusy = false
