@@ -23,13 +23,14 @@ object ArenaImport {
 
     suspend fun saveToWorkspace(context: Context, url: String, name: String): File =
         withContext(Dispatchers.IO) {
-            val dir = VirtualFs.prootWorkspaceDir(context)
+            val dir = VirtualFs(context).prootWorkspaceDir()
             dir.mkdirs()
             val out = File(dir, safeName(name))
             val response = http.newCall(Request.Builder().url(url).build()).execute()
             response.use { r ->
+                val body = r.body ?: error("respons kosong")
                 if (!r.isSuccessful) error("HTTP ${r.code}")
-                r.body.byteStream().use { input ->
+                body.byteStream().use { input ->
                     out.outputStream().use { output -> input.copyTo(output) }
                 }
             }
