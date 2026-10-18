@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Face
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -32,8 +34,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -173,9 +177,19 @@ fun BuddyScreen(
         }
 
         // Tombol tahan-untuk-bicara: tekan lalu tahan, lepas untuk selesai.
+        //
+        // Digambar sendiri alih-alih memakai ClayPill, karena ClayPill
+        // membawa Modifier.clickable di dalamnya. Dalam Compose gesture anak
+        // diproses lebih dulu, jadi clickable itu akan menelan event tekan dan
+        // detectTapGestures di induk tidak pernah menerimanya.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
+                .clip(ClayShapePill)
+                .background(
+                    if (listening) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.surfaceVariant
+                )
                 .pointerInput(busy) {
                     detectTapGestures(
                         onPress = {
@@ -184,14 +198,17 @@ fun BuddyScreen(
                             endListening()
                         }
                     )
-                },
+                }
+                .padding(horizontal = 14.dp, vertical = 14.dp),
             contentAlignment = Alignment.Center,
         ) {
-            ClayPill(
+            Text(
                 text = if (listening) BuddyText.status(BuddyMood.LISTENING) else BuddyText.holdHint,
-                selected = listening,
-                onClick = {},
-                modifier = Modifier.fillMaxWidth(),
+                color = if (listening) MaterialTheme.colorScheme.onPrimary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
             )
         }
 
