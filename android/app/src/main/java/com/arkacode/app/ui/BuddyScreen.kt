@@ -71,9 +71,10 @@ fun BuddyScreen(
         Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
 
     // SpeechRecognizer harus dibebaskan saat layar ditutup, kalau tidak
-    // mikrofon tetap menyala di latar belakang.
+    // mikrofon tetap menyala di latar belakang. Di sini pakai cancel() karena
+    // tidak ada yang menunggu hasilnya lagi.
     DisposableEffect(Unit) {
-        onDispose { BuddySpeech.stop() }
+        onDispose { BuddySpeech.destroy() }
     }
 
     fun speak(text: String) {
@@ -121,9 +122,9 @@ fun BuddyScreen(
 
     fun endListening() {
         if (!listening) return
-        BuddySpeech.stop()
-        listening = false
-        mood = BuddyMood.IDLE
+        // Lembut: biarkan recognizer mengirim hasil terakhirnya lewat onResults.
+        // Memakai cancel() di sini akan membuang hasil yang sudah terekam.
+        BuddySpeech.stopListening()
     }
 
     // Izin diminta saat tombol ditekan pertama kali, bukan saat layar dibuka —

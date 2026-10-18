@@ -25,13 +25,14 @@ object BuddySpeech {
         runCatching { SpeechRecognizer.isRecognitionAvailable(context) }.getOrDefault(false)
 
     /**
-     * Mulai mendengarkan sampai [stop] dipanggil atau pengguna berhenti bicara.
+     * Mulai mendengarkan sampai [stopListening] dipanggil atau pengguna
+     * berhenti bicara sendiri.
      *
      * @param onText dipanggil sekali dengan hasil akhir; null kalau kosong.
      * @param onFailed dipanggil sekali dengan kode galat SpeechRecognizer.
      */
     fun start(context: Context, onText: (String?) -> Unit, onFailed: (Int) -> Unit) {
-        stop()
+        destroy()
         if (!isAvailable(context)) {
             onFailed(SpeechRecognizer.ERROR_CLIENT)
             return
@@ -78,8 +79,23 @@ object BuddySpeech {
         r.startListening(intent)
     }
 
-    /** Berhenti mendengarkan tanpa menunggu hasil. Aman dipanggil berulang. */
-    fun stop() {
+    /**
+     * Selesai mendengarkan dan tunggu hasil terakhir.
+     *
+     * Sengaja memakai [SpeechRecognizer.stopListening] dan bukan `cancel()`:
+     * `cancel()` membatalkan sesi dan tidak pernah memanggil `onResults`,
+     * sehingga hasilnya tidak akan pernah sampai. `stopListening()` justru
+     * meminta recognizer menutup rekaman lalu mengirim hasilnya.
+     *
+     * Recognizer sengaja tidak dihancurkan di sini — listener-nya harus tetap
+     * hidup sampai `onResults`/`onError` tiba.
+     */
+    fun stopListening() {
+        recognizer?.let { runCatching { it.stopListening() } }
+    }
+
+    /** Hentikan paksa dan lepaskan recognizer. Untuk saat layar ditutup. */
+    fun destroy() {
         recognizer?.let {
             recognizer = null
             runCatching { it.cancel() }
