@@ -11,6 +11,12 @@ object BuddyText {
 
     // --- Tahap 2: suara -------------------------------------------------
 
+    /** Judul kartu API key di layar Pengaturan. */
+    val keyTitle: String get() = when (I18n.lang) {
+        AppLang.ID -> "Suara Buddy (Gemini TTS)"
+        AppLang.EN -> "Buddy voice (Gemini TTS)"
+    }
+
     val keyHint: String get() = when (I18n.lang) {
         AppLang.ID -> "API key Gemini (Google AI Studio)"
         AppLang.EN -> "Gemini API key (Google AI Studio)"

@@ -40,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.arkacode.app.core.BuddyVoice
 import com.arkacode.app.core.EngineManager
 import com.arkacode.app.core.EngineRelease
 import com.arkacode.app.core.EngineService
@@ -69,6 +70,7 @@ fun SettingsScreen(
     var currentPort by remember { mutableStateOf(port) }
     var currentPassword by remember { mutableStateOf(password) }
     var gitPat by remember { mutableStateOf("") }
+    var buddyKey by remember { mutableStateOf("") }
     var notice by remember { mutableStateOf<String?>(null) }
     var showIntegrationsSheet by remember { mutableStateOf(false) }
     var engineVersion by remember { mutableStateOf<String?>(null) }
@@ -80,6 +82,8 @@ fun SettingsScreen(
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             runCatching { SecureStore.getGitPat(context) }.getOrNull()?.let { gitPat = it }
+            runCatching { SecureStore.getAuth(context, BuddyVoice.KEY_NAME) }.getOrNull()
+                ?.let { buddyKey = it }
             runCatching { uiPrefs.autoUpdateEnabled() }.getOrNull()?.let { autoUpdate = it }
             runCatching { eng.version() }.getOrNull()?.let { engineVersion = it }
         }
@@ -316,6 +320,38 @@ fun SettingsScreen(
                                     gitPat = ""
                                     notice = I18n.s.gitPatDeleted
                                 }
+                            }) { Text(I18n.s.deleteKey, color = MaterialTheme.colorScheme.error) }
+                        }
+                    }
+                }
+
+                // API key Buddy dipindahkan ke sini dari layar Buddy agar
+                // dikelola bersama kredensial lainnya.
+                ClayCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(BuddyText.keyTitle, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            BuddyText.keyHint,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        OutlinedTextField(
+                            value = buddyKey,
+                            onValueChange = { buddyKey = it },
+                            placeholder = { Text(BuddyText.keyMissing) },
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = {
+                                BuddyVoice.saveKey(context, buddyKey)
+                                notice = BuddyText.keySaved
+                            }) { Text(I18n.s.saveKey) }
+                            TextButton(onClick = {
+                                BuddyVoice.saveKey(context, "")
+                                buddyKey = ""
+                                notice = BuddyText.keySaved
                             }) { Text(I18n.s.deleteKey, color = MaterialTheme.colorScheme.error) }
                         }
                     }

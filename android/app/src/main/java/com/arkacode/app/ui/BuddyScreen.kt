@@ -38,7 +38,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.arkacode.app.core.BuddySpeech
@@ -50,7 +49,8 @@ import kotlinx.coroutines.launch
  *
  * Tahap 1: wajah besar + pemilih keadaan, supaya tiap ekspresi bisa diperiksa
  * satu per satu.
- * Tahap 2: kolom API key Gemini + kotak kalimat untuk mencoba TTS.
+ * Tahap 2: kotak kalimat untuk mencoba TTS. API key-nya pindah ke
+ * Pengaturan.
  * Tahap 3: pemilih keadaan diganti tombol tahan-untuk-bicara (STT bawaan
  * Android). Keadaan kini digerakkan oleh alur nyata, bukan dipilih manual.
  */
@@ -62,7 +62,6 @@ fun BuddyScreen(
     val scope = rememberCoroutineScope()
 
     var mood by remember { mutableStateOf(BuddyMood.IDLE) }
-    var key by remember { mutableStateOf("") }
     var sentence by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var listening by remember { mutableStateOf(false) }
@@ -213,29 +212,8 @@ fun BuddyScreen(
             )
         }
 
-        // API key: disimpan terenkripsi lewat SecureStore, tak pernah ditampilkan
-        // lagi setelah diisi (kolom sengaja kosong, hanya untuk mengganti).
-        OutlinedTextField(
-            value = key,
-            onValueChange = { key = it },
-            label = { Text(BuddyText.keyHint) },
-            singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
-            enabled = !busy && !listening,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        TextButton(
-            onClick = {
-                if (key.isBlank()) return@TextButton
-                BuddyVoice.saveKey(context, key)
-                key = ""
-                toast(BuddyText.keySaved)
-            },
-            enabled = !busy && !listening,
-        ) {
-            Text(if (BuddyVoice.hasKey(context)) BuddyText.keySaved else BuddyText.keyMissing)
-        }
-
+        // API key Buddy tidak lagi di sini — pindah ke Pengaturan agar
+        // dikelola bersama kredensial lainnya.
         OutlinedTextField(
             value = sentence,
             onValueChange = { sentence = it },
