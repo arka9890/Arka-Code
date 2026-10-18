@@ -14,7 +14,7 @@ object BuddyText {
         AppLang.ID -> when (mood) {
             BuddyMood.IDLE -> "Siap membantu — tahan tombol untuk bicara."
             BuddyMood.LISTENING -> "Mendengarkan…"
-            BuddyMood.THOINKING -> "Berpikir…"
+            BuddyMood.THINKING -> "Berpikir…"
             BuddyMood.TALKING -> "Sedang bicara."
             BuddyMood.HAPPY -> "Senang bisa membantu!"
         }
@@ -22,7 +22,7 @@ object BuddyText {
         AppLang.EN -> when (mood) {
             BuddyMood.IDLE -> "Ready — hold the button to talk."
             BuddyMood.LISTENING -> "Listening…"
-            BuddyMood.THOINKING -> "Thinking…"
+            BuddyMood.THINKING -> "Thinking…"
             BuddyMood.TALKING -> "Talking."
             BuddyMood.HAPPY -> "Happy to help!"
         }
@@ -33,7 +33,7 @@ object BuddyText {
         AppLang.ID -> when (mood) {
             BuddyMood.IDLE -> "Siap"
             BuddyMood.LISTENING -> "Mendengar"
-            BuddyMood.THOINKING -> "Berpikir"
+            BuddyMood.THINKING -> "Berpikir"
             BuddyMood.TALKING -> "Bicara"
             BuddyMood.HAPPY -> "Senang"
         }
@@ -41,7 +41,7 @@ object BuddyText {
         AppLang.EN -> when (mood) {
             BuddyMood.IDLE -> "Idle"
             BuddyMood.LISTENING -> "Listening"
-            BuddyMood.THOINKING -> "Thinking"
+            BuddyMood.THINKING -> "Thinking"
             BuddyMood.TALKING -> "Talking"
             BuddyMood.HAPPY -> "Happy"
         }

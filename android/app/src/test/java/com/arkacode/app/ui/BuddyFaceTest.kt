@@ -75,7 +75,7 @@ class BuddyFaceTest {
 
     @Test
     fun thinking_looksUpAndToTheRight() {
-        val f = buddyFrame(BuddyMood.THOINKING, 4_000f)
+        val f = buddyFrame(BuddyMood.THINKING, 4_000f)
         assertTrue("arah pandang ke atas", f.lookY < 0f)
         assertTrue("arah pandang ke kanan", f.lookX > 0f)
     }

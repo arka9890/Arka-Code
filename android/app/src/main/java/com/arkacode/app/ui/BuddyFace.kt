@@ -109,7 +109,7 @@ fun buddyFrame(mood: BuddyMood, timeMs: Float): BuddyFrame {
             bounce = float * 0.4f,
         )
 
-        BuddyMood.THOINKING -> BuddyFrame(
+        BuddyMood.THINKING -> BuddyFrame(
             eyeOpen = 1f - closed,
             mouthOpen = 0f,
             mouthCurve = wave(t, 1_200f) * 0.5f,
@@ -151,7 +151,7 @@ fun buddyFrame(mood: BuddyMood, timeMs: Float): BuddyFrame {
 private fun moodGlow(mood: BuddyMood): Color = when (mood) {
     BuddyMood.IDLE, BuddyMood.TALKING -> MaterialTheme.colorScheme.primary
     BuddyMood.LISTENING, BuddyMood.HAPPY -> MaterialTheme.colorScheme.tertiary
-    BuddyMood.THOINKING -> ThinkAmber
+    BuddyMood.THINKING -> ThinkAmber
 }
 
 /**

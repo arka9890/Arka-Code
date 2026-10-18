@@ -328,6 +328,7 @@ fun EngineScreen(
                     onOpenProviders = { showProviders = true },
                     onOpenCapabilities = { showCaps = true },
                     onOpenSettings = { showSettings = true },
+                    onOpenBuddy = { showBuddy = true },
                 )
             }
         }
@@ -453,6 +454,7 @@ private fun ReadyScreen(
     onOpenProviders: () -> Unit,
     onOpenCapabilities: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenBuddy: () -> Unit,
     isDark: Boolean,
     onToggleTheme: () -> Unit,
 ) {
@@ -571,7 +573,7 @@ private fun ReadyScreen(
         ClayBottomBar(
             items = listOf(
                 ClayNavItem(Icons.Default.List, I18n.s.navSessions, selected = true, onClick = {}),
-                ClayNavItem(Icons.Default.Face, BuddyText.nav, selected = false, onClick = { showBuddy = true }),
+                ClayNavItem(Icons.Default.Face, BuddyText.nav, selected = false, onClick = onOpenBuddy),
                 ClayNavItem(Icons.Default.SmartToy, I18n.s.navAI, selected = false, onClick = onOpenProviders),
                 ClayNavItem(Icons.Default.Build, I18n.s.navCaps, selected = false, onClick = onOpenCapabilities),
                 ClayNavItem(Icons.Default.Settings, I18n.s.navSettings, selected = false, onClick = onOpenSettings),
