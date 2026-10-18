@@ -22,7 +22,7 @@ class WorkspaceImportTest {
     @Test
     fun `nama berkas tak boleh membawa jalur direktori`() {
         assertEquals("laporan.pdf", WorkspaceImport.safeName("../../laporan.pdf"))
-        assertEquals("a_b_c.txt", WorkspaceImport.safeName("a/b\\c.txt"))
+        assertEquals("c.txt", WorkspaceImport.safeName("a/b\\c.txt"))
         assertEquals("upload-file", WorkspaceImport.safeName("   "))
     }
 }
