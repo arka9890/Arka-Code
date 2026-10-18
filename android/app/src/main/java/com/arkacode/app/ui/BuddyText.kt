@@ -41,6 +41,28 @@ object BuddyText {
         AppLang.EN -> "Voice failed: $why"
     }
 
+    // --- Tahap 3: tahan-untuk-bicara -------------------------------------
+
+    val holdHint: String get() = when (I18n.lang) {
+        AppLang.ID -> "Tahan untuk bicara"
+        AppLang.EN -> "Hold to talk"
+    }
+
+    val micDenied: String get() = when (I18n.lang) {
+        AppLang.ID -> "Izin mikrofon diperlukan supaya Buddy bisa mendengar."
+        AppLang.EN -> "Microphone permission is needed so Buddy can listen."
+    }
+
+    val heard: String get() = when (I18n.lang) {
+        AppLang.ID -> "Terdengar:"
+        AppLang.EN -> "Heard:"
+    }
+
+    val nothingHeard: String get() = when (I18n.lang) {
+        AppLang.ID -> "Tidak ada yang terdengar. Coba lagi."
+        AppLang.EN -> "Nothing was heard. Try again."
+    }
+
     /** Baris status di bawah judul. */
     fun status(mood: BuddyMood): String = when (I18n.lang) {
         AppLang.ID -> when (mood) {
