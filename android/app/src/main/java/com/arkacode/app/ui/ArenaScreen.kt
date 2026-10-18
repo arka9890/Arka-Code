@@ -107,8 +107,12 @@ object ArenaLauncher {
  *   walau aplikasi ditutup dan dibuka lagi.
  * - Ada indikator muat + status galat dengan tombol Coba lagi / Buka di
  *   browser, supaya layar tak pernah tinggal kosong tanpa kejelasan.
- * - Tangkap unduhan (download) → simpan ke folder /Download Android.
- *   Hasil unduhan nanti diimpor ke workspace proot via ArenaDownloadBridge.
+ * - Unduhan yang lewat lewat WebView langsung disimpan ke proot workspace
+ *   oleh [com.arkacode.app.core.ArenaImport].
+ *
+ * Catatan: jalur normal Arena adalah Custom Tab (lihat [ArenaLauncher]), jadi
+ * listener di sini jarang sekali terpanggil. Untuk memasukkan berkas, pakai
+ * tombol unggah di panel Files.
  */
 class ArenaScreenActivity : ComponentActivity() {
 

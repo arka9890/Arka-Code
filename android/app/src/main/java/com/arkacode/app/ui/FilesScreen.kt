@@ -3,6 +3,9 @@ package com.arkacode.app.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -21,7 +24,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
@@ -51,7 +53,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.arkacode.app.core.fileLeafName
-import com.arkacode.app.core.ArenaDownloadBridge
+import com.arkacode.app.core.WorkspaceImport
 import com.arkacode.app.net.FsEntry
 import com.arkacode.app.net.OpenCodeClient
 import kotlinx.coroutines.Job
@@ -147,6 +149,33 @@ fun FilesPane(port: Int, password: String, modifier: Modifier = Modifier) {
 
     LaunchedEffect(Unit) { loadDir("") }
 
+    val pickFile = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val name = WorkspaceImport.displayName(filesContext, uri) ?: "berkas"
+        Toast.makeText(filesContext, UploadText.progress(name), Toast.LENGTH_SHORT).show()
+        scope.launch {
+            val result = runCatching {
+                WorkspaceImport.importUri(filesContext, uri, cwd)
+            }
+            result.onSuccess {
+                Toast.makeText(
+                    filesContext,
+                    UploadText.done(it.size, name),
+                    Toast.LENGTH_LONG
+                ).show()
+                loadDir(cwd)
+            }.onFailure {
+                Toast.makeText(
+                    filesContext,
+                    UploadText.failed(name, it.message ?: "?"),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
     Surface(color = MaterialTheme.colorScheme.surface) {
         Column(Modifier.fillMaxWidth()) {
             Row(
@@ -172,40 +201,12 @@ fun FilesPane(port: Int, password: String, modifier: Modifier = Modifier) {
                     Icon(Icons.Default.Refresh, contentDescription = I18n.s.reloadFiles)
                 }
                 if (openedPath == null) {
-                    IconButton(onClick = {
-                        scope.launch {
-                            val imported = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                ArenaDownloadBridge.importDownloadsToWorkspace(
-                                    context = filesContext,
-                                    filesDirFolder = filesContext.filesDir,
-                                    projectName = "default",
-                                )
-                            }
-                            if (imported > 0) loadDir(cwd)
-                        }
-                    }) {
+                    IconButton(onClick = { pickFile.launch(arrayOf("*/*")) }) {
                         Icon(
                             Icons.Default.Save,
-                            contentDescription = I18n.s.arenaImportDownloads,
+                            contentDescription = UploadText.pick,
                         )
                     }
-                }
-                IconButton(onClick = {
-                    val count = ArenaDownloadBridge.importDownloadsToWorkspace(
-                        filesContext,
-                        filesContext.filesDir,
-                        "default"
-                    )
-                    scope.launch {
-                        android.widget.Toast.makeText(
-                            filesContext,
-                            I18n.s.arenaImported(count),
-                            android.widget.Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                    loadDir(cwd)
-                }) {
-                    Icon(Icons.Default.Download, contentDescription = I18n.s.arenaImportDownloads)
                 }
             }
             if (openedPath == null) {
