@@ -9,28 +9,7 @@ object BuddyText {
     val title: String get() = "Arka Buddy"
     val nav: String get() = "Buddy"
 
-    // --- Tahap 2: suara -------------------------------------------------
-
-    /** Judul kartu API key di layar Pengaturan. */
-    val keyTitle: String get() = when (I18n.lang) {
-        AppLang.ID -> "Suara Buddy (Gemini TTS)"
-        AppLang.EN -> "Buddy voice (Gemini TTS)"
-    }
-
-    val keyHint: String get() = when (I18n.lang) {
-        AppLang.ID -> "API key Gemini (Google AI Studio)"
-        AppLang.EN -> "Gemini API key (Google AI Studio)"
-    }
-
-    val keySaved: String get() = when (I18n.lang) {
-        AppLang.ID -> "Kunci tersimpan."
-        AppLang.EN -> "Key saved."
-    }
-
-    val keyMissing: String get() = when (I18n.lang) {
-        AppLang.ID -> "Isi API key Gemini dulu agar suara bisa nyala."
-        AppLang.EN -> "Enter the Gemini API key first to enable voice."
-    }
+    // --- Suara ----------------------------------------------------------
 
     val sayHint: String get() = when (I18n.lang) {
         AppLang.ID -> "Ketik kalimat untuk didengarkan"

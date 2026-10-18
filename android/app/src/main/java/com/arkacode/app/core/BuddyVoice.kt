@@ -1,211 +1,110 @@
 package com.arkacode.app.core
 
 import android.content.Context
-import android.media.AudioAttributes
-import android.media.AudioFormat
-import android.media.AudioTrack
-import android.util.Base64
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonArray
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.put
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.IOException
-import java.util.concurrent.TimeUnit
+import java.util.Locale
+import java.util.UUID
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /**
- * Sintesis suara Arka Buddy memakai Gemini TTS (gratis di free tier).
+ * Suara Arka Buddy memakai TTS bawaan Android (`android.speech.tts`).
  *
- * Kenapa Gemini: `gemini-2.5-flash-preview-tts` ada di free tier, bisa
- * diarahkan gayanya, dan tidak butuh kartu kredit. `gemini-3.8-flash-tts`
- * sengaja tidak dipakai karena TIDAK punya free tier.
+ * Kenapa lokal: gratis, offline, tanpa API key, dan tidak ada satu huruf pun
+ * yang dikirim ke server manapun. Bahasa mengikuti locale perangkat — bila HP
+ * berbahasa Indonesia, Buddy otomatis bicara Indonesia. Suara mengikuti TTS
+ * engine yang terpasang (Google TTS / bawaan pabrikan).
  *
- * Responsnya PCM mentah (16-bit, 24 kHz, mono) sehingga langsung diputar lewat
- * AudioTrack — tidak ada codec, tidak ada dependensi baru.
+ * Sebelumnya memakai Gemini TTS (`gemini-2.5-flash-preview-tts`) yang butuh API
+ * key dan jaringan; diganti lokal agar tidak bergantung kunci & daring.
+ *
+ * Engine diinisialisasi sekali (proses async) lalu dipakai ulang; [destroy]
+ * melepasnya saat layar Buddy ditutup.
  */
 object BuddyVoice {
 
-    private const val MODEL = "gemini-2.5-flash-preview-tts"
-    private const val ENDPOINT =
-        "https://generativelanguage.googleapis.com/v1beta/models/$MODEL:generateContent"
+    private var engine: TextToSpeech? = null
+    private var ready: CompletableDeferred<Boolean>? = null
 
-    /** Nama penyimpanan API key di SecureStore. */
-    const val KEY_NAME = "gemini_tts"
+    /** Teks dibersihkan & dipotong supaya satu ucapan tidak terlalu panjang. */
+    fun fitText(raw: String, max: Int = 500): String = raw.trim().take(max).trimEnd()
 
-    /** Suara bawaan. */
-    private const val VOICE = "Kore"
-
-    /**
-     * Instruksi gaya yang mendahului teks pengguna.
-     *
-     * Wajib untuk model generasi 2.5: di sana arahan gaya ditulis di dalam
-     * teks (bukan lewat `speech_metadata`, itu khas 3.8). Tanpa ini model
-     * menganggap masukan sebagai percakapan lalu mencoba *menjawab*nya — dan
-     * karena hanya boleh mengeluarkan audio, permintaannya ditolak 400 dengan
-     * pesan "Model tried to generate text, but it should only be audio".
-     */
-    private const val STYLE_PREFIX = "Say in a warm, friendly voice: "
-
-    const val SAMPLE_RATE = 24_000
-
-    private val http = OkHttpClient.Builder()
-        .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .build()
-
-    private val jsonType = "application/json; charset=utf-8".toMediaType()
-    private val json = Json { ignoreUnknownKeys = true }
-
-    fun hasKey(context: Context): Boolean =
-        !SecureStore.getAuth(context, KEY_NAME).isNullOrBlank()
-
-    fun saveKey(context: Context, key: String) = SecureStore.setAuth(context, KEY_NAME, key)
-
-    /** Teks dipotong supaya tidak melampaui batas permintaan TTS. */
-    fun fitText(raw: String, max: Int = 400): String =
-        raw.trim().take(max).trimEnd()
-
-    /**
-     * Ubah teks menjadi audio PCM.
-     *
-     * @throws IOException bila jaringan, kunci, atau respons tidak beres —
-     *   pesannya sudah layak ditampilkan ke pengguna.
-     */
-    suspend fun synthesize(context: Context, text: String): ByteArray =
-        withContext(Dispatchers.IO) {
-            val key = SecureStore.getAuth(context, KEY_NAME)
-                ?.takeIf { it.isNotBlank() }
-                ?: throw IOException("API key Gemini belum diisi")
-
-            val clean = fitText(text)
-            if (clean.isEmpty()) throw IOException("tidak ada teks untuk dibacakan")
-            val speakable = STYLE_PREFIX + clean
-
-            val payload = buildJsonObject {
-                put(
-                    "contents",
-                    buildJsonArray {
-                        add(
-                            buildJsonObject {
-                                put(
-                                    "parts",
-                                    buildJsonArray {
-                                        add(buildJsonObject { put("text", speakable) })
-                                    },
-                                )
-                            },
-                        )
-                    },
-                )
-                put(
-                    "generationConfig",
-                    buildJsonObject {
-                        put("responseModalities", buildJsonArray { add(JsonPrimitive("AUDIO")) })
-                        put(
-                            "speechConfig",
-                            buildJsonObject {
-                                put(
-                                    "voiceConfig",
-                                    buildJsonObject {
-                                        put(
-                                            "prebuiltVoiceConfig",
-                                            buildJsonObject { put("voiceName", VOICE) },
-                                        )
-                                    },
-                                )
-                            },
-                        )
-                    },
-                )
-            }.toString()
-
-            val request = Request.Builder()
-                .url(ENDPOINT)
-                .addHeader("x-goog-api-key", key)
-                .post(payload.toRequestBody(jsonType))
-                .build()
-
-            http.newCall(request).execute().use { response ->
-                val body = response.body?.string().orEmpty()
-                if (!response.isSuccessful) {
-                    throw IOException("Gemini menolak (${response.code}): ${errorFrom(body)}")
-                }
-                decodeAudio(body)
-            }
+    /** Siapkan engine bila belum ada (idempoten) lalu tunggu sampai siap. */
+    private suspend fun engineFor(context: Context): TextToSpeech {
+        engine?.let { existing ->
+            if (ready?.await() == true) return existing
+            destroy() // engine lama gagal siap — buang lalu coba ulang sekali
         }
 
-    /** Ambil berkas audio base64 dari respons. */
-    fun decodeAudio(body: String): ByteArray {
-        val data = runCatching {
-            json.parseToJsonElement(body).jsonObject
-                .let { it["candidates"]?.jsonArray?.get(0)?.jsonObject }
-                ?.let { it["content"]?.jsonObject }
-                ?.let { it["parts"]?.jsonArray?.get(0)?.jsonObject }
-                ?.let { it["inlineData"]?.jsonObject ?: it["inline_data"]?.jsonObject }
-                ?.let { it["data"]?.jsonPrimitive?.content }
-        }.getOrNull().orEmpty()
+        val deferred = CompletableDeferred<Boolean>()
+        ready = deferred
+        val created = TextToSpeech(context.applicationContext) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                // Bahasa mengikuti perangkat. Bila locale tak tersedia di engine
+                // ini tetap jalan dengan bahasa defaultnya (nilai kembalian
+                // diabaikan: LTTS_LANG_NOT_SUPPORTED bukan galat mematikan).
+                engine?.setLanguage(Locale.getDefault())
+                deferred.complete(true)
+            } else {
+                deferred.complete(false)
+            }
+        }
+        engine = created
 
-        if (data.isBlank()) throw IOException("respons Gemini tidak berisi audio")
-        return Base64.decode(data, Base64.NO_WRAP)
+        if (deferred.await()) return created
+        destroy()
+        throw IOException("TTS tidak tersedia di perangkat ini")
     }
 
-    fun errorFrom(body: String): String =
-        runCatching {
-            json.parseToJsonElement(body).jsonObject["error"]?.jsonObject
-                ?.get("message")?.jsonPrimitive?.content
-        }.getOrNull().orEmpty().ifBlank { "kunci atau model salah" }
-
     /**
-     * Putar PCM 16-bit 24 kHz mono. Blocking sampai suara benar-benar habis,
-     * supaya pemanggil bisa mengembalikan wajah ke IDLE setelah fungsi ini kembali.
+     * Bacakan [text] blocking sampai ucapan benar-benar selesai, supaya
+     * pemanggil bisa mengembalikan wajah ke IDLE/HAPPY setelah fungsi ini
+     * kembali.
+     *
+     * @throws IOException bila TTS tidak tersedia atau gagal membacakan —
+     *   pesannya sudah layak ditampilkan ke pengguna.
      */
-    suspend fun play(pcm: ByteArray) = withContext(Dispatchers.IO) {
-        if (pcm.isEmpty()) return@withContext
+    suspend fun speak(context: Context, text: String) {
+        val clean = fitText(text)
+        if (clean.isEmpty()) return
+        val tts = engineFor(context)
 
-        val channel = AudioFormat.CHANNEL_OUT_MONO
-        val format = AudioFormat.ENCODING_PCM_16BIT
-        val minBuffer = AudioTrack.getMinBufferSize(SAMPLE_RATE, channel, format)
-        if (minBuffer <= 0) throw IOException("perangkat tidak mendukung pemutaran audio")
+        suspendCancellableCoroutine { cont ->
+            tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) = Unit
 
-        val track = AudioTrack.Builder()
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ASSISTANT)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .build(),
-            )
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setSampleRate(SAMPLE_RATE)
-                    .setEncoding(format)
-                    .setChannelMask(channel)
-                    .build(),
-            )
-            .setBufferSizeInBytes(minBuffer * 2)
-            .setTransferMode(AudioTrack.MODE_STREAM)
-            .build()
+                override fun onDone(utteranceId: String?) {
+                    if (cont.isActive) cont.resume(Unit)
+                }
 
-        try {
-            track.play()
-            var offset = 0
-            while (offset < pcm.size) {
-                val written = track.write(pcm, offset, minOf(pcm.size - offset, minBuffer))
-                if (written <= 0) break
-                offset += written
+                @Deprecated("Deprecated in Java")
+                override fun onError(utteranceId: String?) {
+                    if (cont.isActive) cont.resumeWithException(IOException("TTS berhenti karena galat"))
+                }
+
+                override fun onError(utteranceId: String?, errorCode: Int) {
+                    if (cont.isActive) cont.resumeWithException(IOException("TTS berhenti karena galat"))
+                }
+            })
+            // Bila pemanggil batal (mis. layar ditutup di tengah ucapan), hentikan
+            // audio supaya tidak nyangkut di latar belakang.
+            cont.invokeOnCancellation { tts.stop() }
+
+            val queued = tts.speak(clean, TextToSpeech.QUEUE_FLUSH, null, UUID.randomUUID().toString())
+            if (queued != TextToSpeech.SUCCESS && cont.isActive) {
+                cont.resumeWithException(IOException("TTS tidak bisa membacakan teks"))
             }
-            // MODE_STREAM: stop() kembali setelah buffer terakhir selesai diputar.
-            track.stop()
-        } finally {
-            track.release()
         }
+    }
+
+    /** Lepas engine. Dipanggil saat layar Buddy ditutup. */
+    fun destroy() {
+        engine?.shutdown()
+        engine = null
+        ready = null
     }
 }

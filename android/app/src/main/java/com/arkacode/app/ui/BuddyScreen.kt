@@ -82,16 +82,20 @@ fun BuddyScreen(
 
     // SpeechRecognizer harus dibebaskan saat layar ditutup, kalau tidak
     // mikrofon tetap menyala di latar belakang. Di sini pakai cancel() karena
-    // tidak ada yang menunggu hasilnya lagi.
+    // tidak ada yang menunggu hasilnya lagi. TTS ikut dilepas agar engine tidak
+    // nyangkut.
     DisposableEffect(Unit) {
-        onDispose { BuddySpeech.destroy() }
+        onDispose {
+            BuddySpeech.destroy()
+            BuddyVoice.destroy()
+        }
     }
 
     /** Bacakan teks. Mengatur `mood`, bukan `busy` — pemanggil yang memegang. */
     suspend fun speakNow(text: String) {
         runCatching {
             mood = BuddyMood.TALKING
-            BuddyVoice.play(BuddyVoice.synthesize(context, text))
+            BuddyVoice.speak(context, text)
         }.onSuccess {
             mood = BuddyMood.HAPPY
         }.onFailure {
@@ -250,8 +254,8 @@ fun BuddyScreen(
             )
         }
 
-        // API key Buddy tidak lagi di sini — pindah ke Pengaturan agar
-        // dikelola bersama kredensial lainnya.
+        // Jalur manual: ketik kalimat lalu dengarkan (untuk mencoba suara tanpa
+        // lewat STT). TTS kini lokal, jadi tidak butuh API key.
         OutlinedTextField(
             value = sentence,
             onValueChange = { sentence = it },
@@ -259,12 +263,10 @@ fun BuddyScreen(
             enabled = !busy && !listening,
             modifier = Modifier.fillMaxWidth(),
         )
+        // TTS kini lokal (bawaan Android) — tidak butuh API key lagi, jadi tidak
+        // ada gate `hasKey` di sini.
         TextButton(
             onClick = {
-                if (!BuddyVoice.hasKey(context)) {
-                    toast(BuddyText.keyMissing)
-                    return@TextButton
-                }
                 if (sentence.isBlank()) return@TextButton
                 speak(sentence)
             },
