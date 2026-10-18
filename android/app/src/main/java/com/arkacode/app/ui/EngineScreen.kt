@@ -293,7 +293,7 @@ fun EngineScreen(
                     },
                 )
             } else if (showBuddy) {
-                BuddyScreen(onBack = { showBuddy = false })
+                BuddyScreen(client = chatClient, runs = runs, onBack = { showBuddy = false })
             } else if (target != null) {
                 ChatScreen(
                     sessionId = target.id,

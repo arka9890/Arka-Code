@@ -47,6 +47,12 @@ object BuddyText {
         AppLang.EN -> "Voice failed: $why"
     }
 
+    /** Galat saat engine tidak bisa menjawab (bukan galat suara). */
+    fun askFailed(why: String): String = when (I18n.lang) {
+        AppLang.ID -> "Buddy tidak bisa menjawab: $why"
+        AppLang.EN -> "Buddy could not answer: $why"
+    }
+
     // --- Tahap 3: tahan-untuk-bicara -------------------------------------
 
     val holdHint: String get() = when (I18n.lang) {

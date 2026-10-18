@@ -59,15 +59,41 @@ class SessionRunRegistry(
         ensureEvents()
         if (r.attached) return
         r.attached = true
-        scope.launch {
-            runCatching { client.listMessages(sessionId) }.getOrNull()?.let { r.messages.value = it }
-            runCatching { client.listPermissions(sessionId) }.getOrNull()?.let { r.pending.value = it }
-            runCatching { client.listQuestions(sessionId) }.getOrNull()?.let { r.questions.value = it }
-            val active = runCatching { client.sessionActive() }.getOrDefault(emptySet())
-            if (sessionId in active && !r.busy.value) {
-                r.busy.value = true
-                startPolling(sessionId)
+        scope.launch { loadSession(sessionId) }
+    }
+
+    /**
+     * Pastikan `messages` terisi sebelum giliran baru dikirim.
+     *
+     * [send] mengambil snapshot `preIds` dari `messages`. Kalau masih kosong,
+     * polling akan menganggap assistant LAMA sebagai balasan giliran ini, jadi
+     * Buddy akan mengulang jawaban sebelumnya. Maka muat dulu bila belum ada —
+     * termasuk ketika `attach` asinkron masih berjalan di latar belakang untuk
+     * sesi yang sama.
+     */
+    suspend fun attachNow(sessionId: String) {
+        val r = run(sessionId)
+        ensureEvents()
+        if (r.attached) {
+            if (r.messages.value.isEmpty()) {
+                runCatching { client.listMessages(sessionId) }
+                    .getOrNull()?.let { r.messages.value = it }
             }
+            return
+        }
+        r.attached = true
+        loadSession(sessionId)
+    }
+
+    private suspend fun loadSession(sessionId: String) {
+        val r = run(sessionId)
+        runCatching { client.listMessages(sessionId) }.getOrNull()?.let { r.messages.value = it }
+        runCatching { client.listPermissions(sessionId) }.getOrNull()?.let { r.pending.value = it }
+        runCatching { client.listQuestions(sessionId) }.getOrNull()?.let { r.questions.value = it }
+        val active = runCatching { client.sessionActive() }.getOrDefault(emptySet())
+        if (sessionId in active && !r.busy.value) {
+            r.busy.value = true
+            startPolling(sessionId)
         }
     }
 
@@ -235,7 +261,7 @@ class SessionRunRegistry(
                 val newAssistant = r.messages.value
                     .filterIsInstance<ChatItem.Assistant>()
                     .lastOrNull { it.id !in r.preIds }
-                if (newAssistant != null && isTerminal(newAssistant.finish)) {
+                if (newAssistant != null && isTerminalFinish(newAssistant.finish)) {
                     // Tunggu singkat sampai server menuntaskan penyimpanan isi
                     // balasan — menghindari bubble kosong karena pesan tersimpan
                     // belum lengkap tepat saat `finish` muncul.
@@ -282,14 +308,11 @@ class SessionRunRegistry(
      */
     private fun snapshotPreIds(messages: List<ChatItem>): Set<String> {
         val lastAsst = messages.filterIsInstance<ChatItem.Assistant>().lastOrNull()
-        val pendingId = if (lastAsst != null && !isTerminal(lastAsst.finish)) lastAsst.id else null
+        val pendingId = if (lastAsst != null && !isTerminalFinish(lastAsst.finish)) lastAsst.id else null
         val ids = messages.mapTo(mutableSetOf()) { it.id }
         if (pendingId != null) ids.remove(pendingId)
         return ids
     }
-
-    /** `tool-calls` = lanjut ke langkah berikutnya, jadi belum selesai. */
-    private fun isTerminal(finish: String?): Boolean = finish != null && finish != "tool-calls"
 
     private companion object {
         const val POLL_MS = 1500L
@@ -300,3 +323,13 @@ class SessionRunRegistry(
         const val MAX_FETCH_FAILS = 5
     }
 }
+
+/**
+ * Giliran sudah selesai.
+ *
+ * `tool-calls` hanya berarti lanjut ke langkah berikutnya, jadi belum selesai;
+ * `null` berarti pesan masih menggantung. Tingkat berkas supaya aturan yang
+ * sama dipakai baik oleh polling di [SessionRunRegistry] maupun oleh
+ * `BuddyAgent` yang memastikan balasan benar-benar lengkap sebelum dibacakan.
+ */
+fun isTerminalFinish(finish: String?): Boolean = finish != null && finish != "tool-calls"

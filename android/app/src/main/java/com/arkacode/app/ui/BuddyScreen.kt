@@ -41,7 +41,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.arkacode.app.core.BuddySpeech
+import com.arkacode.app.core.BuddyAgent
 import com.arkacode.app.core.BuddyVoice
+import com.arkacode.app.core.SessionRunRegistry
+import com.arkacode.app.core.SessionUiPrefs
+import com.arkacode.app.net.OpenCodeClient
 import kotlinx.coroutines.launch
 
 /**
@@ -53,13 +57,20 @@ import kotlinx.coroutines.launch
  * Pengaturan.
  * Tahap 3: pemilih keadaan diganti tombol tahan-untuk-bicara (STT bawaan
  * Android). Keadaan kini digerakkan oleh alur nyata, bukan dipilih manual.
+ * Tahap 4: hasil ucapan dikirim ke sesi opencode lewat [BuddyAgent] dan
+ * balasan engine yang dibacakan. Sesi dipakai ulang antar giliran.
  */
 @Composable
 fun BuddyScreen(
+    client: OpenCodeClient,
+    runs: SessionRunRegistry,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val agent = remember(client, runs) {
+        BuddyAgent(client, runs, SessionUiPrefs(context))
+    }
 
     var mood by remember { mutableStateOf(BuddyMood.IDLE) }
     var sentence by remember { mutableStateOf("") }
@@ -76,18 +87,44 @@ fun BuddyScreen(
         onDispose { BuddySpeech.destroy() }
     }
 
+    /** Bacakan teks. Mengatur `mood`, bukan `busy` — pemanggil yang memegang. */
+    suspend fun speakNow(text: String) {
+        runCatching {
+            mood = BuddyMood.TALKING
+            BuddyVoice.play(BuddyVoice.synthesize(context, text))
+        }.onSuccess {
+            mood = BuddyMood.HAPPY
+        }.onFailure {
+            mood = BuddyMood.IDLE
+            toast(BuddyText.failed(it.message ?: "?"))
+        }
+    }
+
     fun speak(text: String) {
         scope.launch {
             busy = true
-            runCatching {
-                mood = BuddyMood.TALKING
-                BuddyVoice.play(BuddyVoice.synthesize(context, text))
-            }.onSuccess {
-                mood = BuddyMood.HAPPY
-            }.onFailure {
-                mood = BuddyMood.IDLE
-                toast(BuddyText.failed(it.message ?: "?"))
-            }
+            speakNow(text)
+            busy = false
+        }
+    }
+
+    /**
+     * Kirim hasil ucapan ke engine, lalu bacakan balasannya.
+     *
+     * Tahap sebelumnya Buddy hanya mengulangi apa yang terdengar — supaya STT
+     * bisa diperiksa tanpa menunggu jalur engine. Sekarang jalurnya sudah
+     * nyambung.
+     */
+    fun answer(heard: String) {
+        scope.launch {
+            busy = true
+            mood = BuddyMood.THINKING
+            runCatching { agent.ask(heard) }
+                .onSuccess { reply -> speakNow(reply) }
+                .onFailure {
+                    mood = BuddyMood.IDLE
+                    toast(BuddyText.askFailed(it.message ?: "?"))
+                }
             busy = false
         }
     }
@@ -105,10 +142,7 @@ fun BuddyScreen(
                     toast(BuddyText.nothingHeard)
                 } else {
                     sentence = heard
-                    // Tahap 4 akan mengganti baris ini dengan mengirim heard ke
-                    // sesi opencode; sementara Buddy hanya mengulanginya supaya
-                    // hasil STT bisa diperiksa.
-                    speak(heard)
+                    answer(heard)
                 }
             },
             onFailed = { code ->
@@ -203,7 +237,11 @@ fun BuddyScreen(
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = if (listening) BuddyText.status(BuddyMood.LISTENING) else BuddyText.holdHint,
+                text = when {
+                    listening -> BuddyText.status(BuddyMood.LISTENING)
+                    busy -> BuddyText.status(BuddyMood.THINKING)
+                    else -> BuddyText.holdHint
+                },
                 color = if (listening) MaterialTheme.colorScheme.onPrimary
                 else MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelLarge,
