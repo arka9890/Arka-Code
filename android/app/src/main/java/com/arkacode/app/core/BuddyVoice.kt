@@ -44,6 +44,17 @@ object BuddyVoice {
     /** Suara bawaan. */
     private const val VOICE = "Kore"
 
+    /**
+     * Instruksi gaya yang mendahului teks pengguna.
+     *
+     * Wajib untuk model generasi 2.5: di sana arahan gaya ditulis di dalam
+     * teks (bukan lewat `speech_metadata`, itu khas 3.8). Tanpa ini model
+     * menganggap masukan sebagai percakapan lalu mencoba *menjawab*nya — dan
+     * karena hanya boleh mengeluarkan audio, permintaannya ditolak 400 dengan
+     * pesan "Model tried to generate text, but it should only be audio".
+     */
+    private const val STYLE_PREFIX = "Say in a warm, friendly voice: "
+
     const val SAMPLE_RATE = 24_000
 
     private val http = OkHttpClient.Builder()
@@ -77,6 +88,7 @@ object BuddyVoice {
 
             val clean = fitText(text)
             if (clean.isEmpty()) throw IOException("tidak ada teks untuk dibacakan")
+            val speakable = STYLE_PREFIX + clean
 
             val payload = buildJsonObject {
                 put(
@@ -87,7 +99,7 @@ object BuddyVoice {
                                 put(
                                     "parts",
                                     buildJsonArray {
-                                        add(buildJsonObject { put("text", clean) })
+                                        add(buildJsonObject { put("text", speakable) })
                                     },
                                 )
                             },
