@@ -112,8 +112,8 @@ class BuddyFaceTest {
                 val bottom = f.footY + f.unit * 0.24f
                 assertTrue("$where atas di dalam kanvas", top >= 0f)
                 assertTrue("$where bawah di dalam kanvas", bottom <= 600f)
-                // Rambut + tangan adalah bagian terlebar.
-                val half = maxOf(f.unit * 1.08f, f.unit * 1.10f)
+                // Rambut + tangan adalah bagian terlebar (1,22u + radius 0,15u).
+                val half = f.unit * 1.38f
                 assertTrue("$where melebar di dalam kanvas", f.headCx + half <= 300f)
             }
         }

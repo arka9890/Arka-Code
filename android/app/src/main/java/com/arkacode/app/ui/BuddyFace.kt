@@ -174,8 +174,8 @@ data class BuddyFigure(
  * Fungsi murni supaya bisa dites tanpa Compose — lihat `BuddyFaceTest`.
  */
 fun buddyFigure(w: Float, h: Float, frame: BuddyFrame): BuddyFigure {
-    // Skala figuur: tinggi ±4,2 unit, dilebihkan 12% biar ada margin.
-    val unit = min(h / 4.2f / 1.12f, w / 2.5f)
+    // Skala figuur: tinggi ±3,9 unit, dilebihkan 12% biar ada margin.
+    val unit = min(h / 3.9f / 1.12f, w / 2.8f)
     val bob = frame.bounce * unit * 0.020f
     // Pusat figur (japek s/d kaki) di tengah kanvas.
     val headCy = h / 2f - 0.765f * unit + bob
@@ -184,8 +184,8 @@ fun buddyFigure(w: Float, h: Float, frame: BuddyFrame): BuddyFigure {
         headCx = w * 0.500f,
         headCy = headCy,
         bodyTop = headCy + 1.20f * unit,
-        bodyBottom = headCy + 2.05f * unit,
-        footY = headCy + 2.95f * unit,
+        bodyBottom = headCy + 2.10f * unit,
+        footY = headCy + 2.52f * unit,
     )
 }
 
@@ -215,9 +215,9 @@ private fun cubicPath(p0: Offset, c1: Offset, c2: Offset, p1: Offset): Path =
 private data class Fringe(val dx: Float, val tip: Float, val skew: Float, val halfW: Float)
 
 private val Fringes = listOf(
-    Fringe(-0.58f, -0.10f, 0.08f, 0.34f),
-    Fringe(0.00f, -0.05f, 0.00f, 0.32f),
-    Fringe(0.58f, -0.12f, -0.08f, 0.34f),
+    Fringe(-0.52f, -0.10f, 0.08f, 0.31f),
+    Fringe(0.00f, -0.05f, 0.00f, 0.29f),
+    Fringe(0.52f, -0.12f, -0.08f, 0.31f),
 )
 
 /**
@@ -269,10 +269,10 @@ fun BuddyFace(
         val shoulderY = f.bodyTop
         val hipY = f.bodyBottom
         val footY = f.footY
-        val eyeY = cy + 0.26f * u
-        val blushY = cy + 0.58f * u
-        val noseY = cy + 0.66f * u
-        val mouthY = cy + 0.78f * u
+        val eyeY = cy + 0.22f * u
+        val blushY = cy + 0.54f * u
+        val noseY = cy + 0.60f * u
+        val mouthY = cy + 0.72f * u
 
         // Squash & stretch: figur memanjang/memipis dari kaki ke atas,
         // volumenya tetap terjaga.
@@ -282,13 +282,13 @@ fun BuddyFace(
             // --- rambut belakang: siluet lebih besar dari kepala ---
             drawOval(
                 color = hair,
-                topLeft = Offset(cx - 1.08f * u, cy - 1.30f * u),
-                size = Size(2.16f * u, 2.28f * u),
+                topLeft = Offset(cx - 0.92f * u, cy - 1.16f * u),
+                size = Size(1.84f * u, 2.04f * u),
             )
             drawOval(
                 color = hair,
-                topLeft = Offset(cx - 1.00f * u, cy - 0.25f * u),
-                size = Size(2.00f * u, 1.60f * u),
+                topLeft = Offset(cx - 0.88f * u, cy - 0.26f * u),
+                size = Size(1.76f * u, 1.52f * u),
             )
 
             // --- kaki + sepatu ---
@@ -298,13 +298,13 @@ fun BuddyFace(
                     color = limb,
                     start = Offset(lx, hipY),
                     end = Offset(lx, footY),
-                    strokeWidth = 0.22f * u,
+                    strokeWidth = 0.28f * u,
                     cap = StrokeCap.Round,
                 )
                 drawOval(
                     color = hair,
-                    topLeft = Offset(lx + side * 0.06f * u - 0.34f * u, footY - 0.12f * u),
-                    size = Size(0.68f * u, 0.36f * u),
+                    topLeft = Offset(lx + side * 0.05f * u - 0.30f * u, footY - 0.12f * u),
+                    size = Size(0.60f * u, 0.32f * u),
                 )
             }
 
@@ -312,25 +312,25 @@ fun BuddyFace(
             for (side in intArrayOf(-1, 1)) {
                 drawLine(
                     color = limb,
-                    start = Offset(cx + side * 0.86f * u, shoulderY),
-                    end = Offset(cx + side * 1.10f * u, hipY - 0.35f * u),
-                    strokeWidth = 0.20f * u,
+                    start = Offset(cx + side * 0.80f * u, shoulderY),
+                    end = Offset(cx + side * 1.22f * u, hipY - 0.34f * u),
+                    strokeWidth = 0.19f * u,
                     cap = StrokeCap.Round,
                 )
                 drawCircle(
                     color = limb,
-                    radius = 0.16f * u,
-                    center = Offset(cx + side * 1.10f * u, hipY - 0.35f * u),
+                    radius = 0.15f * u,
+                    center = Offset(cx + side * 1.22f * u, hipY - 0.34f * u),
                 )
             }
 
             // --- badan: tunic ---
             drawPath(
                 Path().apply {
-                    moveTo(cx - 0.78f * u, shoulderY)
-                    lineTo(cx + 0.78f * u, shoulderY)
-                    lineTo(cx + 0.92f * u, hipY)
-                    lineTo(cx - 0.92f * u, hipY)
+                    moveTo(cx - 0.94f * u, shoulderY)
+                    lineTo(cx + 0.94f * u, shoulderY)
+                    lineTo(cx + 1.10f * u, hipY)
+                    lineTo(cx - 1.10f * u, hipY)
                     close()
                 },
                 Brush.verticalGradient(
@@ -342,10 +342,10 @@ fun BuddyFace(
             // Kerah
             drawPath(
                 Path().apply {
-                    moveTo(cx - 0.42f * u, shoulderY)
-                    lineTo(cx, shoulderY + 0.24f * u)
-                    lineTo(cx + 0.42f * u, shoulderY)
-                    lineTo(cx, shoulderY - 0.10f * u)
+                    moveTo(cx - 0.30f * u, shoulderY)
+                    lineTo(cx, shoulderY + 0.11f * u)
+                    lineTo(cx + 0.30f * u, shoulderY)
+                    lineTo(cx, shoulderY - 0.04f * u)
                     close()
                 },
                 skin,
@@ -366,12 +366,12 @@ fun BuddyFace(
             // --- wajah: oval chibi, agak turun supaya ada dahi di bawah poni ---
             drawOval(
                 color = skin,
-                topLeft = Offset(cx - 0.86f * u, cy - 0.74f * u),
-                size = Size(1.72f * u, 1.72f * u),
+                topLeft = Offset(cx - 0.78f * u, cy - 0.68f * u),
+                size = Size(1.56f * u, 1.60f * u),
             )
             // Pipi (blush) lembut
             for (side in intArrayOf(-1, 1)) {
-                val bx = cx + side * 0.55f * u
+                val bx = cx + side * 0.50f * u
                 for (i in 0 until 6) {
                     val k = 1f - i / 6f
                     drawOval(
@@ -385,11 +385,11 @@ fun BuddyFace(
             // --- rambut: mahkota + garis rambut + poni ---
             drawPath(
                 Path().apply {
-                    moveTo(cx - 0.98f * u, cy - 0.26f * u)
-                    quadraticBezierTo(cx - 0.92f * u, cy - 1.08f * u, cx, cy - 1.08f * u)
-                    quadraticBezierTo(cx + 0.92f * u, cy - 1.08f * u, cx + 0.98f * u, cy - 0.26f * u)
+                    moveTo(cx - 0.90f * u, cy - 0.24f * u)
+                    quadraticBezierTo(cx - 0.86f * u, cy - 1.02f * u, cx, cy - 1.02f * u)
+                    quadraticBezierTo(cx + 0.86f * u, cy - 1.02f * u, cx + 0.90f * u, cy - 0.24f * u)
                     // Garis rambut: busur halus.
-                    quadraticBezierTo(cx, cy - 0.50f * u, cx - 0.98f * u, cy - 0.26f * u)
+                    quadraticBezierTo(cx, cy - 0.46f * u, cx - 0.90f * u, cy - 0.24f * u)
                     close()
                 },
                 hair,
@@ -397,8 +397,8 @@ fun BuddyFace(
             // Poni: tiga gumpalan membulat yang menjuntai dari garis rambut.
             for (fr in Fringes) {
                 val x0 = cx + fr.dx * u
-                val tl = Offset(x0 - fr.halfW * u, cy - 0.42f * u)
-                val tr = Offset(x0 + fr.halfW * u, cy - 0.42f * u)
+                val tl = Offset(x0 - fr.halfW * u, cy - 0.40f * u)
+                val tr = Offset(x0 + fr.halfW * u, cy - 0.40f * u)
                 drawPath(
                     Path().apply {
                         moveTo(tl.x, tl.y)
@@ -412,36 +412,36 @@ fun BuddyFace(
             // Highlight rambut
             drawPath(
                 quadPath(
-                    Offset(cx - 0.58f * u, cy - 0.78f * u),
-                    Offset(cx - 0.20f * u, cy - 0.90f * u),
-                    Offset(cx + 0.34f * u, cy - 0.76f * u),
+                    Offset(cx - 0.52f * u, cy - 0.74f * u),
+                    Offset(cx - 0.18f * u, cy - 0.86f * u),
+                    Offset(cx + 0.30f * u, cy - 0.72f * u),
                 ),
                 hairHi.copy(alpha = 0.9f),
-                style = Stroke(width = 0.078f * u, cap = StrokeCap.Round),
+                style = Stroke(width = 0.072f * u, cap = StrokeCap.Round),
             )
 
             // --- japek (ahoge): helai rambut melengkung di atas kepala ---
             drawPath(
                 cubicPath(
-                    Offset(cx + 0.10f * u, cy - 0.88f * u),
-                    Offset(cx + 0.30f * u, cy - 1.34f * u),
-                    Offset(cx + 0.78f * u, cy - 1.26f * u),
-                    Offset(cx + 0.64f * u, cy - 0.94f * u),
+                    Offset(cx + 0.04f * u, cy - 0.86f * u),
+                    Offset(cx + 0.20f * u, cy - 1.40f * u),
+                    Offset(cx + 0.58f * u, cy - 1.38f * u),
+                    Offset(cx + 0.66f * u, cy - 1.16f * u),
                 ),
                 hair,
-                style = Stroke(width = 0.10f * u, cap = StrokeCap.Round),
+                style = Stroke(width = 0.080f * u, cap = StrokeCap.Round),
             )
-            // Puncak japek menyala = penanda keadaan (warna per mood).
-            val tip = Offset(cx + 0.49f * u, cy - 1.20f * u)
+            // Ujung japek menyala = penanda keadaan (warna per mood).
+            val tip = Offset(cx + 0.66f * u, cy - 1.16f * u)
             drawCircle(glow.copy(alpha = 0.20f), 0.058f * u, tip)
             drawCircle(glow.copy(alpha = 0.45f), 0.040f * u, tip)
             drawCircle(glow, 0.024f * u, tip)
 
             // --- MATA anime chibi: iris besar, kilau, kelopak atas tebal ---
             for (side in intArrayOf(-1, 1)) {
-                val ex = cx + side * 0.38f * u
-                val ew = 0.30f * u
-                val eh = 0.36f * u
+                val ex = cx + side * 0.34f * u
+                val ew = 0.27f * u
+                val eh = 0.32f * u
                 if (mood == BuddyMood.HAPPY) {
                     drawPath(
                         quadPath(
