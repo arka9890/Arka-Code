@@ -87,4 +87,35 @@ class BuddyFaceTest {
             assertTrue("mendengar = mata melebar ($t)", f.eyeOpen > 0.5f)
         }
     }
+
+    @Test
+    fun figure_stacksHeadBodyAndFeetTopDown() {
+        for (mood in moods) {
+            for (t in samples) {
+                val f = buddyFigure(300f, 600f, buddyFrame(mood, t))
+                val where = "$mood@$t"
+                assertTrue("$where unit", f.unit > 0f)
+                assertTrue("$where kepala di atas badan", f.headCy < f.bodyTop)
+                assertTrue("$where badan di atas kaki", f.bodyBottom < f.footY)
+                assertTrue("$where bahu di bawah kepala", f.shoulderY > f.headCy)
+            }
+        }
+    }
+
+    @Test
+    fun figure_fitsInsideCanvas() {
+        for (mood in moods) {
+            for (t in samples) {
+                val f = buddyFigure(300f, 600f, buddyFrame(mood, t))
+                val where = "$mood@$t"
+                // Entire figure (tuft tip .. shoes) must stay in the canvas.
+                val top = f.headCy - f.headRy * 1.42f
+                val bottom = f.footY + f.unit * 0.022f
+                assertTrue("$where atas di dalam kanvas", top >= 0f)
+                assertTrue("$where bawah di dalam kanvas", bottom <= 600f)
+                // Arms must not stick out sideways.
+                assertTrue("$where lengan di dalam kanvas", f.headCx + f.handDx <= 300f)
+            }
+        }
+    }
 }
