@@ -28,6 +28,8 @@ class BuddyFaceTest {
                 assertTrue("$where bounce", f.bounce in -1f..1f)
                 // squash harus positif (rx = r / squash) dan tak ekstrem.
                 assertTrue("$where squash", f.squash > 0.5f && f.squash < 1.5f)
+                assertTrue("$where armRaise", f.armRaise in 0f..1f)
+                assertTrue("$where armWave", f.armWave in -1f..1f)
             }
         }
     }
@@ -103,19 +105,56 @@ class BuddyFaceTest {
 
     @Test
     fun figure_fitsInsideCanvas() {
-        for (mood in moods) {
-            for (t in samples) {
-                val f = buddyFigure(300f, 600f, buddyFrame(mood, t))
-                val where = "$mood@$t"
-                // Figur penuh (japek .. sepatu) harus tetap di dalam kanvas.
-                val top = f.headCy - 1.34f * f.unit
-                val bottom = f.footY + f.unit * 0.24f
-                assertTrue("$where atas di dalam kanvas", top >= 0f)
-                assertTrue("$where bawah di dalam kanvas", bottom <= 600f)
-                // Rambut + tangan adalah bagian terlebar (1,22u + radius 0,15u).
-                val half = f.unit * 1.38f
-                assertTrue("$where melebar di dalam kanvas", f.headCx + half <= 300f)
+        // Kanvas tinggi (kartu potret) dan lebar (lanskap) sama-sama harus muat.
+        for ((w, h) in listOf(300f to 600f, 360f to 460f, 600f to 280f)) {
+            for (mood in moods) {
+                for (t in samples) {
+                    val f = buddyFigure(w, h, buddyFrame(mood, t))
+                    val where = "$mood@$t ${w}x$h"
+                    // Figur penuh (ahoge/gelembung .. bayangan) di dalam kanvas.
+                    val top = f.headCy + FIGURE_TOP_U * f.unit
+                    val bottom = f.groundY + 0.10f * f.unit
+                    assertTrue("$where atas di dalam kanvas", top >= 0f)
+                    assertTrue("$where bawah di dalam kanvas", bottom <= h)
+                    val half = f.unit * FIGURE_HALF_W_U
+                    assertTrue("$where melebar di dalam kanvas", f.headCx + half <= w)
+                    assertTrue("$where kaki di atas bayangan", f.footY < f.groundY + 0.05f * f.unit)
+                }
             }
+        }
+    }
+
+    @Test
+    fun figure_shadowStaysOnTheGround() {
+        // Bayangan tanah tidak ikut melayang meski kepala naik-turun.
+        val ys = samples.map { buddyFigure(360f, 460f, buddyFrame(BuddyMood.HAPPY, it)) }
+        assertEquals(ys.minOf { it.groundY }, ys.maxOf { it.groundY }, 1e-3f)
+        assertTrue("kepala harus melayang", ys.maxOf { it.headCy } - ys.minOf { it.headCy } > 1f)
+    }
+
+    @Test
+    fun happy_raisesArms_idleKeepsThemDown() {
+        for (t in samples) {
+            assertTrue("bahagia = tangan terangkat ($t)", buddyFrame(BuddyMood.HAPPY, t).armRaise > 0.7f)
+            assertTrue("diam = tangan di samping ($t)", buddyFrame(BuddyMood.IDLE, t).armRaise < 0.1f)
+        }
+    }
+
+    @Test
+    fun talking_wavesHand() {
+        val waves = (0..199).map { buddyFrame(BuddyMood.TALKING, it * 17f).armWave }
+        assertTrue("tangan melambai bolak-balik", waves.max() > 0.3f && waves.min() < -0.3f)
+    }
+
+    @Test
+    fun mouthShape_doesNotFlickerBetweenStyles() {
+        // Mulut berganti gaya pada ambang 0,25 (buka) dan 0,3 (kucing). Mood
+        // yang mulutnya "diam" tak boleh bolak-balik melewati ambang itu.
+        for (t in samples) {
+            assertTrue(buddyFrame(BuddyMood.LISTENING, t).mouthOpen > 0.25f)
+            assertTrue(buddyFrame(BuddyMood.HAPPY, t).mouthOpen > 0.25f)
+            assertTrue(buddyFrame(BuddyMood.THINKING, t).mouthCurve < 0.3f)
+            assertTrue(buddyFrame(BuddyMood.IDLE, t).mouthCurve > 0.3f)
         }
     }
 }
