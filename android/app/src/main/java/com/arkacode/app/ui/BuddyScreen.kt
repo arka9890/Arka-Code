@@ -1,6 +1,7 @@
 package com.arkacode.app.ui
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -27,6 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -78,18 +80,72 @@ fun BuddyScreen(
     var busy by remember { mutableStateOf(false) }
     var listening by remember { mutableStateOf(false) }
 
+    // Fungsi lokal harus dideklarasikan sebelum dipakai, jadi toast diletakkan
+    // paling awal.
+    fun toast(msg: String) =
+        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+
     // Engine suara neural sudah terpasang? (dicek ulang tiap kali layar dibuka
     // dan tiap kali pemasangan selesai.)
     var neuralInstalled by remember { mutableStateOf(TtsInstaller.isInstalled(context)) }
+
+    // Sedang menyiapkan installer (menyalin 148 MB) atau memasang?
+    var preparingVoice by remember { mutableStateOf(false) }
+
+    // Intent pemasangan yang menunggu izin "pasang dari sumber tak dikenal".
+    var pendingInstall by remember { mutableStateOf<Intent?>(null) }
 
     val installLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
         neuralInstalled = TtsInstaller.isInstalled(context)
+        preparingVoice = false
+        if (neuralInstalled) TtsInstaller.cleanup(context)
     }
 
-    fun toast(msg: String) =
-        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+    // Izin "pasang aplikasi dari sumber tak dikenal" diberikan dulu; setelah
+    // diizinkan, lanjutkan pemasangan yang tadi tertunda.
+    val grantLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        val intent = pendingInstall
+        pendingInstall = null
+        if (intent != null && TtsInstaller.canInstallPackages(context)) {
+            installLauncher.launch(intent)
+        } else {
+            preparingVoice = false
+            toast(BuddyText.installPermissionDenied)
+        }
+    }
+
+    /**
+     * Pasang engine suara neural.
+     *
+     * Penyalinan installer 148 MB butuh waktu, jadi dilakukan di thread IO
+     * (di luar thread UI) dengan umpan balik "menyiapkan…".
+     */
+    fun installNeuralVoice() {
+        if (preparingVoice) return
+        preparingVoice = true
+        scope.launch {
+            TtsInstaller.prepareInstall(context)
+                .onSuccess { intent ->
+                    if (TtsInstaller.canInstallPackages(context)) {
+                        installLauncher.launch(intent)
+                    } else {
+                        pendingInstall = intent
+                        grantLauncher.launch(TtsInstaller.unknownSourcesIntent(context))
+                    }
+                }
+                .onFailure { error ->
+                    preparingVoice = false
+                    toast(BuddyText.installFailed(error.message ?: "?"))
+                }
+        }
+    }
+
+    // Buang installer yang tak terpakai (engine-nya sudah terpasang).
+    LaunchedEffect(Unit) { TtsInstaller.cleanup(context) }
 
     // SpeechRecognizer harus dibebaskan saat layar ditutup, kalau tidak
     // mikrofon tetap menyala di latar belakang. Di sini pakai cancel() karena
@@ -293,13 +349,14 @@ fun BuddyScreen(
         // terpasang, Aru-chan berbunyi neural: 10 suara Indonesia, tetap offline.
         if (!neuralInstalled) {
             OutlinedButton(
-                onClick = {
-                    TtsInstaller.installIntent(context)?.let { installLauncher.launch(it) }
-                },
-                enabled = !busy && !listening,
+                onClick = { installNeuralVoice() },
+                enabled = !busy && !listening && !preparingVoice,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(BuddyText.installNeuralVoice)
+                Text(
+                    if (preparingVoice) BuddyText.preparingVoice
+                    else BuddyText.installNeuralVoice
+                )
             }
             Text(
                 BuddyText.neuralVoiceHint,

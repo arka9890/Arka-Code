@@ -1,8 +1,14 @@
 package com.arkacode.app.core
 
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
+import android.os.Build
+import android.provider.Settings
 import androidx.core.content.FileProvider
+import androidx.core.net.toUri
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
@@ -32,25 +38,63 @@ object TtsInstaller {
         }.getOrDefault(false)
 
     /**
-     * Siapkan berkas APK engine di cache lalu kembalikan intent pemasangannya.
+     * Siapkan installer engine lalu kembalikan intent pemasangannya.
      *
-     * null bila assetnya tidak ada (build tanpa engine) atau gagal disalin.
+     * Hasil dikembalikan sebagai [Result] supaya penyebab kegagalan (storage
+     * penuh, URI tidak bisa dibuat, ...) bisa ditampilkan ke pengguna —
+     * bukan hilang diam-diam.
+     *
+     * Penyalinan 148 MB dilakukan di thread IO; berkas hasilnya disimpan di
+     * storage internal aplikasi, bukan cache, supaya tidaksegera dibersihkan
+     * sistem saat cache dibersihkan.
      */
-    fun installIntent(context: Context): Intent? {
-        val out = File(context.cacheDir, ASSET_NAME)
-        try {
-            context.assets.open(ASSET_NAME).use { input ->
-                out.outputStream().use { output -> input.copyTo(output) }
+    suspend fun prepareInstall(context: Context): Result<Intent> = withContext(Dispatchers.IO) {
+        runCatching {
+            val out = File(context.filesDir, ASSET_NAME)
+            val expected = context.assets.open(ASSET_NAME).use { it.available() }
+            // Berkas yang sudah ada & ukurannya cocok → pakai lagi, jangan
+            // salin 148 MB berulang.
+            if (out.length() != expected.toLong()) {
+                out.outputStream().use { output ->
+                    context.assets.open(ASSET_NAME).use { input -> input.copyTo(output) }
+                }
             }
-        } catch (e: Exception) {
-            return null
+            if (out.length() == 0L) error("berkas installer kosong")
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                out,
+            )
+            Intent(Intent.ACTION_INSTALL_PACKAGE)
+                .setDataAndType(uri, "application/vnd.android.package-archive")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                // Beberapa versi Android hanya menerapkan grant URI kalau ada
+                // ClipData; tanpa ini installer sistem tak bisa membaca berkas.
+                .also { it.clipData = ClipData.newRawUri("", uri) }
         }
-        val uri = runCatching {
-            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", out)
-        }.getOrNull() ?: return null
-        return Intent(Intent.ACTION_INSTALL_PACKAGE)
-            .setDataAndType(uri, "application/vnd.android.package-archive")
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+
+    /**
+     * Boleh memasang aplikasi lain?
+     *
+     * Android 8+ memintanya secara eksplisit; tanpa itu, installer sistem
+     * menolak danMUATAN pun tak terlihat.
+     */
+    fun canInstallPackages(context: Context): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+            context.packageManager.canRequestPackageInstalls()
+
+    /** Layar "izinkan aplikasi dari sumber ini" untuk Arkacode. */
+    fun unknownSourcesIntent(context: Context): Intent =
+        Intent(
+            Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+            "package:${context.packageName}".toUri(),
+        )
+
+    /** Buang installer yang sudah tak dipakai (engine-nya sudah terpasang). */
+    fun cleanup(context: Context) {
+        if (!isInstalled(context)) return
+        runCatching { File(context.filesDir, ASSET_NAME).delete() }
     }
 
     /**

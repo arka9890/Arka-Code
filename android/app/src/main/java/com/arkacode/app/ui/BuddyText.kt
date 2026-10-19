@@ -28,6 +28,23 @@ object BuddyText {
         AppLang.EN -> "Install neural voice"
     }
 
+    val preparingVoice: String get() = when (I18n.lang) {
+        AppLang.ID -> "Menyiapkan installer…"
+        AppLang.EN -> "Preparing installer…"
+    }
+
+    fun installFailed(why: String): String = when (I18n.lang) {
+        AppLang.ID -> "Gagal menyiapkan suara neural: $why"
+        AppLang.EN -> "Could not prepare the neural voice: $why"
+    }
+
+    val installPermissionDenied: String get() = when (I18n.lang) {
+        AppLang.ID -> "Arkacode belum diizinkan memasang aplikasi. " +
+            "Izinkan di Setelan Android › Keamanan › Pasang aplikasi tidak dikenal."
+        AppLang.EN -> "Arkacode is not allowed to install apps. " +
+            "Allow it in Android Settings › Security › Install unknown apps."
+    }
+
     val neuralVoiceHint: String get() = when (I18n.lang) {
         AppLang.ID -> "Engine suara Indonesia ikut dalam aplikasi ini (~150 MB). " +
             "Setelah dipasang, pilih \"SherpaOnnxTtsEngine\" di Setelan Android › " +
