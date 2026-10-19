@@ -17,6 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -44,6 +45,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.arkacode.app.net.IntegrationConnection
 import com.arkacode.app.net.IntegrationInfo
 import com.arkacode.app.net.IntegrationMethod
 import com.arkacode.app.net.IntegrationPrompt
@@ -72,12 +74,17 @@ private fun promptVisible(p: IntegrationPrompt, values: Map<String, String>): Bo
 
 /**
  * Integrasi & OAuth (F4): daftar integrasi server + hubungkan via OAuth (mis.
- * opencode Zen) atau API key. Kredensial disimpan di server; server perlu
- * Stop → Start ulang agar berlaku.
+ * opencode Zen) atau API key. Kredensial disimpan di server; [onRestartEngine]
+ * dipakai untuk menyalakan ulang server supaya kredensial baru berlaku.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun IntegrationsSheet(port: Int, password: String, onDismiss: () -> Unit) {
+fun IntegrationsSheet(
+    port: Int,
+    password: String,
+    onDismiss: () -> Unit,
+    onRestartEngine: (() -> Unit)? = null,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val client = remember(port, password) { OpenCodeClient(port = port, password = password) }
@@ -92,6 +99,10 @@ fun IntegrationsSheet(port: Int, password: String, onDismiss: () -> Unit) {
     var statusText by remember { mutableStateOf<String?>(null) }
     var codeInput by remember { mutableStateOf("") }
     var query by remember { mutableStateOf("") }
+    // Kredensial baru tidak dibaca server sampai prosesnya start ulang, jadi
+    // tombol Hubungkan saja tidak cukup — user juga perlu tombol Start ulang di sini.
+    var pendingRestart by remember { mutableStateOf(false) }
+    var confirmDisconnect by remember { mutableStateOf<IntegrationConnection?>(null) }
 
     fun reload() {
         scope.launch {
@@ -139,7 +150,8 @@ fun IntegrationsSheet(port: Int, password: String, onDismiss: () -> Unit) {
         scope.launch {
             runCatching { client.completeOAuth(integrationId, att.attemptID, codeInput) }
                 .onSuccess {
-                    notice = I18n.s.oauthComplete
+                    notice = I18n.s.restartToApply
+                    pendingRestart = true
                     active = null
                     statusText = null
                     codeInput = ""
@@ -160,6 +172,32 @@ fun IntegrationsSheet(port: Int, password: String, onDismiss: () -> Unit) {
         }
     }
 
+    confirmDisconnect?.let { conn ->
+        AlertDialog(
+            onDismissRequest = { confirmDisconnect = null },
+            title = { Text(I18n.s.disconnect) },
+            text = { Text(I18n.s.disconnectConfirm(conn.label ?: conn.id ?: conn.type)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    val id = conn.id
+                    confirmDisconnect = null
+                    if (id == null) return@TextButton
+                    scope.launch {
+                        runCatching { client.removeCredential(id) }
+                            .onSuccess {
+                                notice = I18n.s.disconnected
+                                reload()
+                            }
+                            .onFailure { error = it.message }
+                    }
+                }) { Text(I18n.s.disconnect) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDisconnect = null }) { Text(I18n.s.cancelConnect) }
+            },
+        )
+    }
+
     // Poll status untuk mode auto; mode code diselesaikan manual oleh pengguna.
     LaunchedEffect(active?.attempt?.attemptID) {
         val att = active?.attempt ?: return@LaunchedEffect
@@ -170,7 +208,8 @@ fun IntegrationsSheet(port: Int, password: String, onDismiss: () -> Unit) {
             val st = runCatching { client.oauthStatus(integrationId, att.attemptID) }.getOrNull() ?: continue
             when (st.status) {
                 "complete" -> {
-                    notice = I18n.s.oauthComplete
+                    notice = I18n.s.restartToApply
+                    pendingRestart = true
                     active = null
                     statusText = null
                     reload()
@@ -232,6 +271,15 @@ fun IntegrationsSheet(port: Int, password: String, onDismiss: () -> Unit) {
             notice?.let {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                    if (pendingRestart && onRestartEngine != null) {
+                        TextButton(
+                            onClick = {
+                                pendingRestart = false
+                                notice = null
+                                onRestartEngine()
+                            },
+                        ) { Text(I18n.s.restartNow) }
+                    }
                     TextButton(onClick = { notice = null }) { Text(I18n.s.close) }
                 }
             }
@@ -322,13 +370,15 @@ fun IntegrationsSheet(port: Int, password: String, onDismiss: () -> Unit) {
                                 scope.launch {
                                     runCatching { client.connectIntegrationKey(mi.id, keyDrafts[mi.id] ?: "") }
                                         .onSuccess {
-                                            notice = I18n.s.connected
+                                            notice = I18n.s.restartToApply
+                                            pendingRestart = true
                                             keyDrafts = keyDrafts - mi.id
                                             reload()
                                         }
                                         .onFailure { error = it.message }
                                 }
                             },
+                            onDisconnect = { c -> confirmDisconnect = c },
                         )
                     }
                 }
@@ -347,6 +397,7 @@ private fun IntegrationCard(
     onKeyDraftChange: (String) -> Unit,
     onConnectOAuth: (IntegrationMethod) -> Unit,
     onConnectKey: (IntegrationMethod) -> Unit,
+    onDisconnect: (IntegrationConnection) -> Unit,
 ) {
     ClayCard(
         modifier = Modifier.fillMaxWidth(),
@@ -365,11 +416,27 @@ private fun IntegrationCard(
             }
             mi.connections.forEach { c ->
                 val label = c.label ?: c.envName ?: c.id ?: c.type
-                Text(
-                    I18n.s.connLabel(label),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            I18n.s.connLabel(label),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        if (c.needsAuth) {
+                            Text(
+                                I18n.s.reconnectNeeded,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                    // Hanya credential yang punya ID bisa dicabut; koneksi `env`
+                    // datang dari environment proses, bukan dari store server.
+                    if (c.type == "credential" && c.id != null) {
+                        TextButton(onClick = { onDisconnect(c) }) { Text(I18n.s.disconnect) }
+                    }
+                }
             }
             mi.methods.forEach { m ->
                 when (m.type) {

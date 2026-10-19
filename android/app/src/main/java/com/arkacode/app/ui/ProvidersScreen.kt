@@ -78,7 +78,12 @@ private val ENV_HINTS = mapOf(
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProvidersScreen(port: Int, password: String, onBack: () -> Unit) {
+fun ProvidersScreen(
+    port: Int,
+    password: String,
+    onBack: () -> Unit,
+    onRestartEngine: (() -> Unit)? = null,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val client = remember(port, password) { OpenCodeClient(port = port, password = password) }
@@ -412,7 +417,12 @@ fun ProvidersScreen(port: Int, password: String, onBack: () -> Unit) {
     }
 
     if (showIntegrations) {
-        IntegrationsSheet(port = port, password = password, onDismiss = { showIntegrations = false })
+        IntegrationsSheet(
+            port = port,
+            password = password,
+            onDismiss = { showIntegrations = false },
+            onRestartEngine = onRestartEngine,
+        )
     }
 
     if (showAddCustom) {

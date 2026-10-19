@@ -190,12 +190,20 @@ data class IntegrationMethod(
     val envNames: List<String>,
 )
 
-/** Koneksi integrasi yang sudah ada (credential|env). */
+/**
+ * Koneksi integrasi yang sudah ada (credential|env).
+ *
+ * [id] adalah credential ID untuk tipe `credential` — inilah yang di-DELETE oleh
+ * [OpenCodeClient.removeCredential]. [method] (key|oauth|external) dan [needsAuth]
+ * dibaca dari `status.status` untuk menandai koneksi yang harus di-reconnect.
+ */
 data class IntegrationConnection(
     val type: String,
     val id: String?,
     val label: String?,
     val envName: String?,
+    val method: String? = null,
+    val needsAuth: Boolean = false,
 )
 
 /** Integrasi + metode & koneksi. */

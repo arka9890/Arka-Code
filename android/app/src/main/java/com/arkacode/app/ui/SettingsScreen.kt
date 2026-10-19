@@ -60,6 +60,7 @@ fun SettingsScreen(
     onStop: (() -> Unit)? = null,
     onShowIntegrations: (() -> Unit)? = null,
     engine: EngineManager? = null,
+    onRestartEngine: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -86,7 +87,12 @@ fun SettingsScreen(
     }
 
     if (showIntegrationsSheet) {
-        IntegrationsSheet(port = currentPort, password = currentPassword, onDismiss = { showIntegrationsSheet = false })
+        IntegrationsSheet(
+            port = currentPort,
+            password = currentPassword,
+            onDismiss = { showIntegrationsSheet = false },
+            onRestartEngine = onRestartEngine,
+        )
     }
 
     Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {

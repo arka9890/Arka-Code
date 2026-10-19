@@ -236,6 +236,13 @@ fun EngineScreen(
             )
         }
         is Screen.Ready -> {
+            // Kredensial OAuth/API key baru hanya dibaca server saat proses start
+            // ulang. Kembalikan ke pipeline Boot: ia yang sudah menangani
+            // stop → start → health. Memasuki branch Boot itu sendiri sudah
+            // memicu ulang LaunchedEffect pipeline, jadi attempt tidak perlu naik.
+            fun restartEngine() {
+                screen = Screen.Boot(0)
+            }
             val target = chatTarget
             val chatClient = remember(port, password) { OpenCodeClient(port = port, password = password) }
             val runs = remember(chatClient) { SessionRunRegistry(scope, chatClient) }
@@ -274,6 +281,7 @@ fun EngineScreen(
                     port = port,
                     password = password,
                     onBack = { showProviders = false },
+                    onRestartEngine = ::restartEngine,
                 )
             } else if (showSettings) {
                 SettingsScreen(
@@ -291,6 +299,7 @@ fun EngineScreen(
                             screen = Screen.Stopped
                         }
                     },
+                    onRestartEngine = ::restartEngine,
                 )
             } else if (showBuddy) {
                 BuddyScreen(client = chatClient, runs = runs, onBack = { showBuddy = false })

@@ -775,6 +775,10 @@ class OpenCodeClient(
                 id = co.str("id"),
                 label = co.str("label"),
                 envName = co.str("name"),
+                method = co.str("method"),
+                // `status.status == "needs_auth"` = token kedaluwarsa/direvoke;
+                // UI menandai supaya user tahu harus OAuth ulang, bukan cuma "connected".
+                needsAuth = (co["status"] as? JsonObject)?.str("status") == "needs_auth",
             )
         }
         return IntegrationInfo(id, o.str("name") ?: id, methods, connections)
@@ -864,5 +868,15 @@ class OpenCodeClient(
 
     suspend fun cancelOAuth(integrationId: String, attemptID: String) {
         runCatching { call(deleteReq(oauthPath(integrationId, attemptID))) }
+    }
+
+    /**
+     * Cabut credential tersimpan (putuskan OAuth / hapus API key integrasi).
+     *
+     * Berbeda dari [cancelOAuth] yang membatalkan attempt yang sedang berjalan;
+     * ini menghapus kredensial yang sudah jadi, dari `connections[].id`.
+     */
+    suspend fun removeCredential(credentialID: String) {
+        call(deleteReq("/api/credential/" + java.net.URLEncoder.encode(credentialID, "UTF-8")))
     }
 }
