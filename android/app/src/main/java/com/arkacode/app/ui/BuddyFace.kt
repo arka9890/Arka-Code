@@ -10,28 +10,29 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.lerp
 import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * Arka Buddy — figur humanoid imut, digambar sepenuhnya dengan Compose Canvas.
+ * Arka Buddy — figur chibi anime, digambar sepenuhnya dengan Compose Canvas.
  *
- * Tidak ada Lottie / aset bitmap: seluruh geometri (kepala, rambut, tubuh,
- * lengan, kaki, mata, mulut) dihitung dari satu angka waktu, sehingga animasi
- * murni sinematika dan nol dependensi.
+ * Tidak ada Lottie / aset bitmap: seluruh geometri (kepala, rambut, poni, mata,
+ * badan, lengan, kaki) dihitung dari satu angka waktu, sehingga animasi murni
+ * sinematika dan nol dependensi.
  */
 
 /** Mood wajah Buddy. */
@@ -148,64 +149,43 @@ fun buddyFrame(mood: BuddyMood, timeMs: Float): BuddyFrame {
 }
 
 /**
- * Tata letak figur humanoid Buddy di kanvas selebar [w] setinggi [h].
+ * Tata letak figur chibi Buddy di kanvas selebar [w] setinggi [h].
  *
- * Proporsi chibi: kepala besar, tubuh kecil — itulah yang bikin dia
- * "imut". Semua nilai dalam piksel; [unit] adalah satuan ukuran figur
- * (tinggi figur ≈ 0,87 unit) supaya bagian-bagiannya bisa digeser tanpa
- * menyentuh tiap gambar.
+ * Proporsi chibi: kepala besar, tubuh kecil — itulah yang bikin dia "imut".
+ * Semua nilai dalam piksel; [unit] adalah satuan ukuran (tinggi figur ≈ 4,2
+ * unit dari puncak japek sampai dasar sepatu) supaya bagian-bagiannya bisa
+ * digeser tanpa menyentuh tiap gambar.
  */
 data class BuddyFigure(
     val unit: Float,
     val headCx: Float,
     val headCy: Float,
-    val headRx: Float,
-    val headRy: Float,
     val bodyTop: Float,
     val bodyBottom: Float,
-    val bodyHalfW: Float,
-    val shoulderY: Float,
-    val handY: Float,
-    val handDx: Float,
     val footY: Float,
-    val legDx: Float,
 )
 
 /**
  * Hitung tata letak figur untuk kanvas [w] x [h] dan [frame].
  *
- * Figur punya proporsi tetap (tinggi ≈ 0,9 unit, lebar ≈ 0,44 unit) dan
- * hanya diperkecil seperlunya supaya muat di kanvas.
+ * Figur punya proporsi tetap dan hanya diperkecil seperlunya supaya muat di
+ * kanvas.
  *
  * Fungsi murni supaya bisa dites tanpa Compose — lihat `BuddyFaceTest`.
  */
 fun buddyFigure(w: Float, h: Float, frame: BuddyFrame): BuddyFigure {
-    // Skala figuur: batasi tinggi (0,96 unit) dan lebar (0,48 unit, rambut).
-    val unit = min(h / 0.96f, w / 0.48f)
+    // Skala figuur: tinggi ±4,2 unit, dilebihkan 12% biar ada margin.
+    val unit = min(h / 4.2f / 1.12f, w / 2.5f)
     val bob = frame.bounce * unit * 0.020f
-    // Volume dijaga: kepala memanjang sedikit menyempit sedikit.
-    val r = unit * 0.200f
-    val headRx = r / frame.squash
-    val headRy = r * frame.squash
-    // Figur dari puncak japek (1,42 ry di atas pusat kepala) sampai dasar sepatu.
-    val figH = 2.20f * headRy + 0.43f * unit
-    val headCy = (h - figH) / 2f + 1.42f * headRy + bob
-    val bodyTop = headCy + headRy * 0.78f
-    val bodyBottom = bodyTop + 0.26f * unit
+    // Pusat figur (japek s/d kaki) di tengah kanvas.
+    val headCy = h / 2f - 0.765f * unit + bob
     return BuddyFigure(
         unit = unit,
         headCx = w * 0.500f,
         headCy = headCy,
-        headRx = headRx,
-        headRy = headRy,
-        bodyTop = bodyTop,
-        bodyBottom = bodyBottom,
-        bodyHalfW = unit * 0.105f,
-        shoulderY = bodyTop + unit * 0.020f,
-        handY = bodyBottom - unit * 0.010f,
-        handDx = unit * 0.150f,
-        footY = bodyBottom + 0.135f * unit,
-        legDx = unit * 0.045f,
+        bodyTop = headCy + 1.20f * unit,
+        bodyBottom = headCy + 2.05f * unit,
+        footY = headCy + 2.95f * unit,
     )
 }
 
@@ -217,10 +197,33 @@ private fun moodGlow(mood: BuddyMood): Color = when (mood) {
     BuddyMood.THINKING -> ThinkAmber
 }
 
+/** Path busur kuadrat: dari [p0] lewat [ctrl] ke [p1]. */
+private fun quadPath(p0: Offset, ctrl: Offset, p1: Offset): Path =
+    Path().apply {
+        moveTo(p0.x, p0.y)
+        quadraticBezierTo(ctrl.x, ctrl.y, p1.x, p1.y)
+    }
+
+/** Path busur kubik: dari [p0] lewat [c1],[c2] ke [p1]. */
+private fun cubicPath(p0: Offset, c1: Offset, c2: Offset, p1: Offset): Path =
+    Path().apply {
+        moveTo(p0.x, p0.y)
+        cubicTo(c1.x, c1.y, c2.x, c2.y, p1.x, p1.y)
+    }
+
+/** Satu gumpalan poni: pangkal lebar di garis rambut, ujung runcing ke bawah. */
+private data class Fringe(val dx: Float, val tip: Float, val skew: Float, val halfW: Float)
+
+private val Fringes = listOf(
+    Fringe(-0.58f, -0.10f, 0.08f, 0.34f),
+    Fringe(0.00f, -0.05f, 0.00f, 0.32f),
+    Fringe(0.58f, -0.12f, -0.08f, 0.34f),
+)
+
 /**
- * Avatar Arka Buddy. Isi kanvas dari [modifier], lalu gambar figur
- * humanoid: rambut, kepala clay, mata yang bisa melihat & berkedip, pipi,
- * mulut yang membuka saat bicara, tubuh, lengan, dan kaki.
+ * Avatar Arka Buddy. Isi kanvas dari [modifier], lalu gambar figur chibi
+ * anime: rambut berponi, kepala besar, mata besar yang bisa melihat &
+ * berkedip, pipi, mulut yang membuka saat bicara, badan, lengan, dan kaki.
  */
 @Composable
 fun BuddyFace(
@@ -242,231 +245,312 @@ fun BuddyFace(
     val frame = buddyFrame(mood, timeMs)
 
     val glow = moodGlow(mood)
-    // Kepala: gradien biru clay — terang di atas, lebih pekat di bawah, supaya
-    // tetap punya volume dan kontras di atas kartu (terang maupun gelap).
     val primary = MaterialTheme.colorScheme.primary
     val dark = isClayDark()
-    val headTop = lerp(primary, Color.White, if (dark) 0.25f else 0.55f)
-    val headBottom = lerp(primary, Color.Black, if (dark) 0.45f else 0.15f)
-    // Tinta mata/mulut/rambut navy pekat: kontras terhadap kedua ujung gradien.
+    // Tinta mata/mulut navy pekat: kontras terhadap wajah terang.
     val ink = Color(0xFF0B2136)
+    // Rambut & iris diturunkan dari warna tema supaya tetap satu keluarga
+    // warna dengan claymorphism app.
+    val hair = lerp(ink, primary, 0.25f)
+    val hairHi = lerp(hair, primary, 0.40f)
+    val skin = Color(0xFFEFF5FC)
+    val irisTop = lerp(primary, ink, 0.45f)
+    val irisBottom = lerp(primary, Color.White, 0.30f)
     val cheek = MaterialTheme.colorScheme.error
+    val cloth = lerp(primary, Color.Black, if (dark) 0.45f else 0.12f)
+    val limb = Color(0xFFE6EEF8)
 
     Canvas(modifier) {
         val f = buddyFigure(size.width, size.height, frame)
         if (f.unit <= 0f) return@Canvas
         val u = f.unit
         val cx = f.headCx
+        val cy = f.headCy
+        val shoulderY = f.bodyTop
+        val hipY = f.bodyBottom
+        val footY = f.footY
+        val eyeY = cy + 0.26f * u
+        val blushY = cy + 0.58f * u
+        val noseY = cy + 0.66f * u
+        val mouthY = cy + 0.78f * u
 
-        // --- kaki & lengan (di belakang badan) ---
-        for (side in intArrayOf(-1, 1)) {
-            drawLine(
-                color = headBottom,
-                start = Offset(cx + f.legDx * 1.6f * side, f.bodyBottom - u * 0.010f),
-                end = Offset(cx + f.legDx * 1.6f * side, f.footY),
-                strokeWidth = u * 0.048f,
-                cap = StrokeCap.Round,
+        // Squash & stretch: figur memanjang/memipis dari kaki ke atas,
+        // volumenya tetap terjaga.
+        withTransform({
+            this.scale(1f / frame.squash, frame.squash, Offset(cx, footY))
+        }) {
+            // --- rambut belakang: siluet lebih besar dari kepala ---
+            drawOval(
+                color = hair,
+                topLeft = Offset(cx - 1.08f * u, cy - 1.30f * u),
+                size = Size(2.16f * u, 2.28f * u),
             )
-            drawLine(
-                color = headBottom,
-                start = Offset(cx + f.bodyHalfW * 0.80f * side, f.shoulderY),
-                end = Offset(cx + f.handDx * side, f.handY),
-                strokeWidth = u * 0.050f,
-                cap = StrokeCap.Round,
+            drawOval(
+                color = hair,
+                topLeft = Offset(cx - 1.00f * u, cy - 0.25f * u),
+                size = Size(2.00f * u, 1.60f * u),
             )
-            // Sepatu
-            drawRoundRect(
-                color = ink,
-                topLeft = Offset(cx + f.legDx * 1.6f * side - u * 0.038f, f.footY - u * 0.012f),
-                size = Size(u * 0.076f, u * 0.034f),
-                cornerRadius = CornerRadius(u * 0.016f, u * 0.016f),
-            )
-        }
 
-        // --- badan: pill clay lembut ---
-        drawRoundRect(
-            brush = Brush.verticalGradient(
-                colors = listOf(primary, lerp(primary, Color.Black, if (dark) 0.55f else 0.22f)),
-                startY = f.bodyTop,
-                endY = f.bodyBottom,
-            ),
-            topLeft = Offset(cx - f.bodyHalfW, f.bodyTop),
-            size = Size(f.bodyHalfW * 2f, f.bodyBottom - f.bodyTop),
-            cornerRadius = CornerRadius(f.bodyHalfW, f.bodyHalfW),
-        )
+            // --- kaki + sepatu ---
+            for (side in intArrayOf(-1, 1)) {
+                val lx = cx + side * 0.34f * u
+                drawLine(
+                    color = limb,
+                    start = Offset(lx, hipY),
+                    end = Offset(lx, footY),
+                    strokeWidth = 0.22f * u,
+                    cap = StrokeCap.Round,
+                )
+                drawOval(
+                    color = hair,
+                    topLeft = Offset(lx + side * 0.06f * u - 0.34f * u, footY - 0.12f * u),
+                    size = Size(0.68f * u, 0.36f * u),
+                )
+            }
 
-        // --- telinga (di belakang kepala) ---
-        for (side in intArrayOf(-1, 1)) {
-            drawCircle(
-                color = headBottom,
-                radius = f.headRx * 0.16f,
-                center = Offset(cx + f.headRx * 0.95f * side, f.headCy + f.headRy * 0.10f),
-            )
-        }
+            // --- lengan ---
+            for (side in intArrayOf(-1, 1)) {
+                drawLine(
+                    color = limb,
+                    start = Offset(cx + side * 0.86f * u, shoulderY),
+                    end = Offset(cx + side * 1.10f * u, hipY - 0.35f * u),
+                    strokeWidth = 0.20f * u,
+                    cap = StrokeCap.Round,
+                )
+                drawCircle(
+                    color = limb,
+                    radius = 0.16f * u,
+                    center = Offset(cx + side * 1.10f * u, hipY - 0.35f * u),
+                )
+            }
 
-        // --- kepala ---
-        val head = Offset(cx - f.headRx, f.headCy - f.headRy)
-        val headSize = Size(f.headRx * 2f, f.headRy * 2f)
-        drawOval(
-            brush = Brush.verticalGradient(
-                colors = listOf(headTop, headBottom),
-                startY = head.y,
-                endY = head.y + headSize.height,
-            ),
-            topLeft = head,
-            size = headSize,
-        )
-        // Highlight lembut khas clay di pelipis atas.
-        drawOval(
-            brush = Brush.verticalGradient(
-                colors = listOf(
-                    Color.White.copy(alpha = if (dark) 0.12f else 0.35f),
-                    Color.Transparent,
+            // --- badan: tunic ---
+            drawPath(
+                Path().apply {
+                    moveTo(cx - 0.78f * u, shoulderY)
+                    lineTo(cx + 0.78f * u, shoulderY)
+                    lineTo(cx + 0.92f * u, hipY)
+                    lineTo(cx - 0.92f * u, hipY)
+                    close()
+                },
+                Brush.verticalGradient(
+                    colors = listOf(primary, cloth),
+                    startY = shoulderY,
+                    endY = hipY,
                 ),
-                startY = head.y,
-                endY = head.y + headSize.height * 0.55f,
-            ),
-            topLeft = head,
-            size = headSize,
-        )
-        // Garis luar tipis agar wajah tak melebur ke warna kartu.
-        drawOval(
-            color = ink.copy(alpha = 0.14f),
-            topLeft = head,
-            size = headSize,
-            style = Stroke(width = u * 0.012f),
-        )
-
-        // --- rambut: mahkota menutupi atas kepala, poni melengkung ---
-        // Bawah poni dijaga di atas garis mata supaya mata tak tertutup.
-        val hair = Path().apply {
-            moveTo(cx - f.headRx * 1.04f, f.headCy - f.headRy * 0.20f)
-            quadraticBezierTo(
-                cx - f.headRx * 1.10f, f.headCy - f.headRy * 1.18f,
-                cx, f.headCy - f.headRy * 1.18f,
             )
-            quadraticBezierTo(
-                cx + f.headRx * 1.10f, f.headCy - f.headRy * 1.18f,
-                cx + f.headRx * 1.04f, f.headCy - f.headRy * 0.20f,
+            // Kerah
+            drawPath(
+                Path().apply {
+                    moveTo(cx - 0.42f * u, shoulderY)
+                    lineTo(cx, shoulderY + 0.24f * u)
+                    lineTo(cx + 0.42f * u, shoulderY)
+                    lineTo(cx, shoulderY - 0.10f * u)
+                    close()
+                },
+                skin,
             )
-            quadraticBezierTo(
-                cx + f.headRx * 0.60f, f.headCy - f.headRy * 0.62f,
-                cx + f.headRx * 0.10f, f.headCy - f.headRy * 0.42f,
-            )
-            quadraticBezierTo(
-                cx - f.headRx * 0.30f, f.headCy - f.headRy * 0.36f,
-                cx - f.headRx * 1.04f, f.headCy - f.headRy * 0.20f,
-            )
-            close()
-        }
-        drawPath(hair, ink)
-
-        // --- japek: satu helai rambut di atas kepala, ujungnya menyala
-        // sebagai penanda keadaan (warna per mood) ---
-        val tuftBase = Offset(cx + f.headRx * 0.10f, f.headCy - f.headRy * 1.00f)
-        val tuftTip = Offset(cx + f.headRx * 0.42f, f.headCy - f.headRy * 1.42f)
-        drawLine(
-            color = ink,
-            start = tuftBase,
-            end = tuftTip,
-            strokeWidth = u * 0.026f,
-            cap = StrokeCap.Round,
-        )
-        drawCircle(glow.copy(alpha = 0.20f), u * 0.058f, tuftTip)
-        drawCircle(glow.copy(alpha = 0.45f), u * 0.040f, tuftTip)
-        drawCircle(glow, u * 0.024f, tuftTip)
-
-        // --- mata ---
-        // Mata duduk sedikit di bawah garis rambut poni supaya tak tertutup.
-        val eyeDX = f.headRx * 0.40f
-        val eyeY = f.headCy + f.headRy * 0.05f
-        val eyeW = f.headRx * 0.30f
-        val eyeH = f.headRy * 0.34f
-        val sclera = Color(0xFFEFF4FB)
-        for (side in intArrayOf(-1, 1)) {
-            val ex = cx + eyeDX * side
-            when {
-                mood == BuddyMood.HAPPY -> {
-                    // Mata bahagia: busur terbuka ke atas.
-                    val p = Path().apply {
-                        moveTo(ex - eyeW, eyeY + eyeH * 0.30f)
-                        quadraticBezierTo(ex, eyeY - eyeH * 0.85f, ex + eyeW, eyeY + eyeH * 0.30f)
-                    }
-                    drawPath(
-                        path = p,
-                        color = ink,
-                        style = Stroke(width = u * 0.030f, cap = StrokeCap.Round),
+            // Lipatan rok
+            drawPath(
+                Path().apply {
+                    moveTo(cx - 0.80f * u, hipY - 0.18f * u)
+                    quadraticBezierTo(
+                        cx, hipY - 0.06f * u,
+                        cx + 0.80f * u, hipY - 0.18f * u,
                     )
-                }
+                },
+                lerp(primary, Color.Black, 0.35f),
+                style = Stroke(width = 0.06f * u, cap = StrokeCap.Round),
+            )
 
-                frame.eyeOpen < 0.10f -> {
-                    // Terpejam: garis pipih.
-                    drawLine(
-                        color = ink,
-                        start = Offset(ex - eyeW, eyeY),
-                        end = Offset(ex + eyeW, eyeY),
-                        strokeWidth = u * 0.026f,
-                        cap = StrokeCap.Round,
-                    )
-                }
-
-                else -> {
-                    val h = eyeH * frame.eyeOpen
+            // --- wajah: oval chibi, agak turun supaya ada dahi di bawah poni ---
+            drawOval(
+                color = skin,
+                topLeft = Offset(cx - 0.86f * u, cy - 0.74f * u),
+                size = Size(1.72f * u, 1.72f * u),
+            )
+            // Pipi (blush) lembut
+            for (side in intArrayOf(-1, 1)) {
+                val bx = cx + side * 0.55f * u
+                for (i in 0 until 6) {
+                    val k = 1f - i / 6f
                     drawOval(
-                        color = sclera,
-                        topLeft = Offset(ex - eyeW, eyeY - h),
-                        size = Size(eyeW * 2f, h * 2f),
+                        color = cheek.copy(alpha = 0.10f),
+                        topLeft = Offset(bx - 0.24f * u * k, blushY - 0.15f * u * k),
+                        size = Size(0.48f * u * k, 0.30f * u * k),
                     )
-                    // Pupil + kilau, di-clip supaya tak keluar dari bola mata.
-                    val pw = eyeW * 0.66f
-                    val px = ex + frame.lookX * eyeW * 0.40f
-                    val py = eyeY + frame.lookY * h * 0.30f
-                    clipRect(
-                        left = ex - eyeW,
-                        top = eyeY - h,
-                        right = ex + eyeW,
-                        bottom = eyeY + h,
-                    ) {
-                        drawCircle(ink, pw, Offset(px, py))
-                        drawCircle(
-                            color = Color.White.copy(alpha = 0.90f),
-                            radius = eyeW * 0.26f,
-                            center = Offset(px - pw * 0.36f, py - pw * 0.40f),
-                        )
-                        drawCircle(
-                            color = Color.White.copy(alpha = 0.55f),
-                            radius = eyeW * 0.13f,
-                            center = Offset(px + pw * 0.40f, py + pw * 0.36f),
-                        )
-                    }
                 }
             }
-        }
 
-        // --- pipi ---
-        val cheekR = f.headRx * 0.17f
-        val cheekY = f.headCy + f.headRy * 0.42f
-        drawCircle(cheek.copy(alpha = 0.30f), cheekR, Offset(cx + f.headRx * 0.62f, cheekY))
-        drawCircle(cheek.copy(alpha = 0.30f), cheekR, Offset(cx - f.headRx * 0.62f, cheekY))
+            // --- rambut: mahkota + garis rambut + poni ---
+            drawPath(
+                Path().apply {
+                    moveTo(cx - 0.98f * u, cy - 0.26f * u)
+                    quadraticBezierTo(cx - 0.92f * u, cy - 1.08f * u, cx, cy - 1.08f * u)
+                    quadraticBezierTo(cx + 0.92f * u, cy - 1.08f * u, cx + 0.98f * u, cy - 0.26f * u)
+                    // Garis rambut: busur halus.
+                    quadraticBezierTo(cx, cy - 0.50f * u, cx - 0.98f * u, cy - 0.26f * u)
+                    close()
+                },
+                hair,
+            )
+            // Poni: tiga gumpalan membulat yang menjuntai dari garis rambut.
+            for (fr in Fringes) {
+                val x0 = cx + fr.dx * u
+                val tl = Offset(x0 - fr.halfW * u, cy - 0.42f * u)
+                val tr = Offset(x0 + fr.halfW * u, cy - 0.42f * u)
+                drawPath(
+                    Path().apply {
+                        moveTo(tl.x, tl.y)
+                        lineTo(tr.x, tr.y)
+                        quadraticBezierTo(x0 + fr.skew * u, cy + fr.tip * u, tl.x, tl.y)
+                        close()
+                    },
+                    hair,
+                )
+            }
+            // Highlight rambut
+            drawPath(
+                quadPath(
+                    Offset(cx - 0.58f * u, cy - 0.78f * u),
+                    Offset(cx - 0.20f * u, cy - 0.90f * u),
+                    Offset(cx + 0.34f * u, cy - 0.76f * u),
+                ),
+                hairHi.copy(alpha = 0.9f),
+                style = Stroke(width = 0.078f * u, cap = StrokeCap.Round),
+            )
 
-        // --- mulut ---
-        // Satu jalur "lens": dua kurva berbagi ujung. Saat mouthOpen = 0 kedua
-        // kurva berimpit sehingga hanya garis tersimpan — mulut jadi terlihat
-        // tertutup tanpa lompatan visual saat mulai membuka.
-        val mouthY = f.headCy + f.headRy * 0.55f
-        val mw = f.headRx * 0.30f
-        val base = mw * 0.80f * frame.mouthCurve
-        val mouth = Path().apply {
-            moveTo(cx - mw, mouthY)
-            quadraticBezierTo(cx, mouthY + base + mw * 1.25f * frame.mouthOpen, cx + mw, mouthY)
-            quadraticBezierTo(cx, mouthY + base - mw * 0.85f * frame.mouthOpen, cx - mw, mouthY)
-            close()
+            // --- japek (ahoge): helai rambut melengkung di atas kepala ---
+            drawPath(
+                cubicPath(
+                    Offset(cx + 0.10f * u, cy - 0.88f * u),
+                    Offset(cx + 0.30f * u, cy - 1.34f * u),
+                    Offset(cx + 0.78f * u, cy - 1.26f * u),
+                    Offset(cx + 0.64f * u, cy - 0.94f * u),
+                ),
+                hair,
+                style = Stroke(width = 0.10f * u, cap = StrokeCap.Round),
+            )
+            // Puncak japek menyala = penanda keadaan (warna per mood).
+            val tip = Offset(cx + 0.49f * u, cy - 1.20f * u)
+            drawCircle(glow.copy(alpha = 0.20f), 0.058f * u, tip)
+            drawCircle(glow.copy(alpha = 0.45f), 0.040f * u, tip)
+            drawCircle(glow, 0.024f * u, tip)
+
+            // --- MATA anime chibi: iris besar, kilau, kelopak atas tebal ---
+            for (side in intArrayOf(-1, 1)) {
+                val ex = cx + side * 0.38f * u
+                val ew = 0.30f * u
+                val eh = 0.36f * u
+                if (mood == BuddyMood.HAPPY) {
+                    drawPath(
+                        quadPath(
+                            Offset(ex - ew, eyeY + 0.10f * u),
+                            Offset(ex, eyeY - 0.50f * u),
+                            Offset(ex + ew, eyeY + 0.10f * u),
+                        ),
+                        ink,
+                        style = Stroke(width = 0.10f * u, cap = StrokeCap.Round),
+                    )
+                    continue
+                }
+                val eye = Path().apply {
+                    addOval(Rect(ex - ew, eyeY - eh, ex + ew, eyeY + eh))
+                }
+                drawPath(eye, Color(0xFFF4F8FF))
+                // Iris di tengah bola mata, digeser sedikit ke bawah.
+                val ir = ew * 0.92f
+                val iy = eyeY + eh * 0.10f + frame.lookY * 0.05f * u
+                val ix = ex + frame.lookX * 0.10f * u
+                clipPath(eye) {
+                    drawOval(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(irisTop, irisBottom),
+                            startY = iy - ir * 1.24f,
+                            endY = iy + ir * 1.24f,
+                        ),
+                        topLeft = Offset(ix - ir, iy - ir * 1.24f),
+                        size = Size(ir * 2f, ir * 2.48f),
+                    )
+                    // Pupil + kilau besar + kilau kecil
+                    drawOval(
+                        color = ink,
+                        topLeft = Offset(ix - ir * 0.44f, iy - ir * 0.64f),
+                        size = Size(ir * 0.88f, ir * 1.28f),
+                    )
+                    drawCircle(
+                        color = Color.White.copy(alpha = 0.95f),
+                        radius = ir * 0.36f,
+                        center = Offset(ix - ir * 0.30f, iy - ir * 0.46f),
+                    )
+                    drawCircle(
+                        color = Color.White.copy(alpha = 0.80f),
+                        radius = ir * 0.15f,
+                        center = Offset(ix + ir * 0.34f, iy + ir * 0.46f),
+                    )
+                    // Kelopak atas: pita gelap di busur atas bola mata. Saat
+                    // berkedip pita ini turun menutupi iris.
+                    val lash = Path()
+                    val back = ArrayList<Offset>(17)
+                    for (i in 0..16) {
+                        val a = PI.toFloat() * (1.04f - 1.08f * i / 16f)
+                        val px = ex + ew * cos(a)
+                        val py = eyeY - eh * sin(a)
+                        if (i == 0) lash.moveTo(px, py) else lash.lineTo(px, py)
+                        val taper = abs(cos(a))
+                        val depth = eh * (0.40f + 1.60f * (1f - frame.eyeOpen)) * (1f - 0.55f * taper)
+                        back.add(Offset(px, py + depth))
+                    }
+                    back.asReversed().forEach { lash.lineTo(it.x, it.y) }
+                    lash.close()
+                    drawPath(lash, ink)
+                }
+                // Eyelash di sudut luar (mata tersenyum)
+                drawLine(
+                    color = ink,
+                    start = Offset(ex + side * ew * 0.86f, eyeY - eh * 0.52f),
+                    end = Offset(ex + side * ew * 1.14f, eyeY - eh * 0.66f),
+                    strokeWidth = 0.024f * u,
+                    cap = StrokeCap.Round,
+                )
+            }
+
+            // --- MULUT kecil ---
+            val mw = 0.17f * u
+            if (frame.mouthOpen > 0.25f) {
+                drawOval(
+                    color = Color(0xFF8E3A52),
+                    topLeft = Offset(cx - mw, mouthY - mw * (0.35f + frame.mouthOpen * 0.9f)),
+                    size = Size(mw * 2f, mw * (0.70f + frame.mouthOpen * 1.8f)),
+                )
+                drawOval(
+                    color = Color(0xFFE07C94),
+                    topLeft = Offset(cx - mw * 0.72f, mouthY + mw * 0.10f),
+                    size = Size(mw * 1.44f, mw * 0.72f),
+                )
+            } else {
+                drawPath(
+                    quadPath(
+                        Offset(cx - mw, mouthY),
+                        Offset(
+                            cx,
+                            mouthY + 0.11f * u * frame.mouthCurve + 0.12f * u * frame.mouthOpen,
+                        ),
+                        Offset(cx + mw, mouthY),
+                    ),
+                    ink,
+                    style = Stroke(width = 0.065f * u, cap = StrokeCap.Round),
+                )
+            }
+
+            // --- HIDUNG kecil
+            drawLine(
+                color = Color(0xFFC6D6EC),
+                start = Offset(cx + 0.02f * u, noseY),
+                end = Offset(cx + 0.07f * u, noseY + 0.06f * u),
+                strokeWidth = 0.045f * u,
+                cap = StrokeCap.Round,
+            )
         }
-        drawPath(mouth, ink, style = Fill)
-        drawPath(
-            path = mouth,
-            color = ink,
-            style = Stroke(width = u * 0.024f, cap = StrokeCap.Round, join = StrokeJoin.Round),
-        )
     }
 }
