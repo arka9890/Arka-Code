@@ -56,14 +56,33 @@ object BuddyVoice {
             destroy() // engine lama gagal siap — buang lalu coba ulang sekali
         }
 
+        val app = context.applicationContext
+        // Engine neural (sherpa-onnx) dipakai lebih dulu kalau sudah
+        // terpasang: suaranya jauh lebih bagus dan tetap offline. Engine
+        // bawaan sistem tetap jadi cadangan, jadi engine neural yang rusak
+        // tidak membuat Aru-chan bisu.
+        for (name in TtsInstaller.engineCandidates(TtsInstaller.isInstalled(app))) {
+            val started = startEngine(app, name)
+            if (started != null) return started
+        }
+        throw IOException("TTS tidak tersedia di perangkat ini")
+    }
+
+    /**
+     * Nyalakan satu engine TTS lalu tunggu sampai siap.
+     *
+     * @param name nama paket engine, atau null untuk engine bawaan sistem.
+     * @return engine yang siap, atau null bila gagal (caller coba yang lain).
+     */
+    private suspend fun startEngine(app: Context, name: String?): TextToSpeech? {
         val deferred = CompletableDeferred<Boolean>()
         ready = deferred
-        val created = TextToSpeech(context.applicationContext) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                deferred.complete(true)
-            } else {
-                deferred.complete(false)
-            }
+        val created = if (name != null) {
+            TextToSpeech(app, TextToSpeech.OnInitListener { status ->
+                deferred.complete(status == TextToSpeech.SUCCESS)
+            }, name)
+        } else {
+            TextToSpeech(app) { status -> deferred.complete(status == TextToSpeech.SUCCESS) }
         }
         engine = created
 
@@ -75,7 +94,7 @@ object BuddyVoice {
             return created
         }
         destroy()
-        throw IOException("TTS tidak tersedia di perangkat ini")
+        return null
     }
 
     /**

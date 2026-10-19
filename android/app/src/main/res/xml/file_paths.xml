@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Installer TTS engine disalin ke cacheDir sebelum dibagikan ke
+         installer sistem; hanya folder itu yang boleh dibaca lewat URI. -->
+    <cache-path
+        name="tts-engine"
+        path="tts-engine.apk" />
+</paths>

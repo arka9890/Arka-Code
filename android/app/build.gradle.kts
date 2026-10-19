@@ -84,6 +84,8 @@ android {
     // Hasil task downloadProotBinaries (libproot.so, libtalloc.so, ...).
     sourceSets.getByName("main") {
         jniLibs.srcDir(layout.buildDirectory.dir("generated/prootJniLibs"))
+        // Hasil task downloadTtsEngineApk (installer TTS engine, arm64-v8a).
+        assets.srcDir(layout.buildDirectory.dir("generated/ttsEngineAssets"))
     }
 }
 
@@ -151,4 +153,46 @@ val downloadProotBinaries = tasks.register("downloadProotBinaries") {
 
 tasks.named("preBuild") {
     dependsOn(downloadProotBinaries)
+}
+
+// ---------------------------------------------------------------------------
+// Installer TTS engine (sherpa-onnx, Bahasa Indonesia)
+//
+// Aru-chan bicara dengan TTS bawaan Android. Supaya suaranya neural (dan
+// tetap offline), engine sherpa-onnx + model Supertonic 3 dibundel di dalam
+// APK ini — satu berkas ~148 MB yang berisi modelnya, jadi pengguna tak perlu
+// mengunduh model terpisah. Arkacode lepaskan engine itu sendiri lewat
+// tombol "Pasang suara neural".
+//
+// APK jadi besar karena asset ini ikut dibundel. Kalau unduhan gagal
+// (offline), build tetap jalan: Aru-chan pakai TTS sistem.
+// Lewati total dengan: ./gradlew assembleDebug -Ptts.skip=true
+// ---------------------------------------------------------------------------
+
+/** Lewati unduhan installer TTS engine: `./gradlew assembleDebug -Ptts.skip=true`. */
+val ttsSkip = (project.findProperty("tts.skip") as String?)?.toBoolean() ?: false
+
+val downloadTtsEngineApk = tasks.register("downloadTtsEngineApk") {
+    group = "arka"
+    description = "Mengunduh installer TTS engine sherpa-onnx (Indonesia) ke assets."
+    val outputDir = layout.buildDirectory.dir("generated/ttsEngineAssets").get().asFile
+    val cacheDir = layout.buildDirectory.dir("tts-engine-cache").get().asFile
+    outputs.dir(outputDir)
+    inputs.property("ttsEngineVersion", arka.TtsEngineApk.VERSION)
+
+    onlyIf { !ttsSkip }
+
+    doLast {
+        val ok = arka.TtsEngineApk.prepare(outputDir, cacheDir) { message -> logger.lifecycle(message) }
+        if (!ok) {
+            logger.warn(
+                "[tts] Installer TTS engine tidak siap (offline / mirror tidak terjangkau). " +
+                    "APK tetap dibangun; Aru-chan pakai TTS bawaan sistem.",
+            )
+        }
+    }
+}
+
+tasks.named("preBuild") {
+    dependsOn(downloadTtsEngineApk)
 }

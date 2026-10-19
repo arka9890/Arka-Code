@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -44,6 +45,7 @@ import com.arkacode.app.core.BuddyAgent
 import com.arkacode.app.core.BuddyVoice
 import com.arkacode.app.core.SessionRunRegistry
 import com.arkacode.app.core.SessionUiPrefs
+import com.arkacode.app.core.TtsInstaller
 import com.arkacode.app.net.OpenCodeClient
 import kotlinx.coroutines.launch
 
@@ -75,6 +77,16 @@ fun BuddyScreen(
     var sentence by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var listening by remember { mutableStateOf(false) }
+
+    // Engine suara neural sudah terpasang? (dicek ulang tiap kali layar dibuka
+    // dan tiap kali pemasangan selesai.)
+    var neuralInstalled by remember { mutableStateOf(TtsInstaller.isInstalled(context)) }
+
+    val installLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        neuralInstalled = TtsInstaller.isInstalled(context)
+    }
 
     fun toast(msg: String) =
         Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
@@ -274,6 +286,26 @@ fun BuddyScreen(
             enabled = !busy && !listening,
         ) {
             Text(BuddyText.speak)
+        }
+
+        // Engine suara neural (sherpa-onnx) ikut dibundel di dalam APK ini, jadi
+        // tak ada yang perlu diunduh — tinggal dipasang sekali. Setelah
+        // terpasang, Aru-chan berbunyi neural: 10 suara Indonesia, tetap offline.
+        if (!neuralInstalled) {
+            OutlinedButton(
+                onClick = {
+                    TtsInstaller.installIntent(context)?.let { installLauncher.launch(it) }
+                },
+                enabled = !busy && !listening,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(BuddyText.installNeuralVoice)
+            }
+            Text(
+                BuddyText.neuralVoiceHint,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

@@ -28,6 +28,16 @@ jobs:
       - name: Set up Gradle (with cache)
         uses: gradle/actions/setup-gradle@v4
 
+      # Installer TTS engine (~148 MB) diunduh saat build. Disimpan di cache
+      # supaya tidak diunduh ulang tiap run; kunci berubah kalau versi engine
+      # di buildSrc berubah.
+      - name: Cache installer TTS engine
+        uses: actions/cache@v4
+        with:
+          path: android/app/build/tts-engine-cache
+          key: tts-engine-${{ hashFiles('android/buildSrc/src/main/kotlin/arka/TtsEngineApk.kt') }}
+          restore-keys: tts-engine-
+
       - name: Build debug APK
         working-directory: android
         run: chmod +x gradlew && ./gradlew :app:assembleDebug --stacktrace

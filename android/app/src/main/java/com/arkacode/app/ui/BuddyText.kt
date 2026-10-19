@@ -21,6 +21,22 @@ object BuddyText {
         AppLang.EN -> "Speak"
     }
 
+    // --- Suara neural (TTS engine sherpa-onnx) ---------------------------
+
+    val installNeuralVoice: String get() = when (I18n.lang) {
+        AppLang.ID -> "Pasang suara neural"
+        AppLang.EN -> "Install neural voice"
+    }
+
+    val neuralVoiceHint: String get() = when (I18n.lang) {
+        AppLang.ID -> "Engine suara Indonesia ikut dalam aplikasi ini (~150 MB). " +
+            "Setelah dipasang, pilih \"SherpaOnnxTtsEngine\" di Setelan Android › " +
+            "Bahasa & masukan › Output teks-ke-speech."
+        AppLang.EN -> "The Indonesian voice engine ships inside this app (~150 MB). " +
+            "After installing, pick \"SherpaOnnxTtsEngine\" in Android Settings › " +
+            "Languages & input › Text-to-speech output."
+    }
+
     fun failed(why: String): String = when (I18n.lang) {
         AppLang.ID -> "Suara gagal: $why"
         AppLang.EN -> "Voice failed: $why"
