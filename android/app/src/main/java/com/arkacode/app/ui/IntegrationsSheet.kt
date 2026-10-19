@@ -116,15 +116,18 @@ fun IntegrationsSheet(
 
     LaunchedEffect(Unit) { reload() }
 
+    // Nilai field yang akan dikirim: yang diketik user, atau `default` dari
+    // server kalau belum diisi (mis. location "global" untuk Vertex).
+    fun inputsFor(m: IntegrationMethod): Map<String, String> = m.prompts
+        .filter { promptVisible(it, promptValues) }
+        .associate { it.key to (promptValues[it.key] ?: it.default ?: "") }
+
     fun begin(mi: IntegrationInfo, m: IntegrationMethod) {
         val methodId = m.id ?: return
-        val inputs = m.prompts
-            .filter { promptVisible(it, promptValues) }
-            .associate { it.key to (promptValues[it.key] ?: "") }
         scope.launch {
             error = null
             statusText = I18n.s.connecting
-            runCatching { client.beginOAuth(mi.id, methodId, inputs) }
+            runCatching { client.beginOAuth(mi.id, methodId, inputsFor(m)) }
                 .onSuccess { att ->
                     active = ActiveOAuth(mi, m, att)
                     statusText = att.instructions.ifBlank { I18n.s.oauthInstructions }
@@ -136,6 +139,27 @@ fun IntegrationsSheet(
                             )
                         }
                     }
+                }
+                .onFailure {
+                    statusText = null
+                    error = it.message
+                }
+        }
+    }
+
+    // Tanpa attempt/poll: server baca kredensial dari rootfs, jadi cukup satu
+    // POST dan reload.
+    fun connectExternal(mi: IntegrationInfo, m: IntegrationMethod) {
+        val methodId = m.id ?: return
+        scope.launch {
+            error = null
+            statusText = I18n.s.connecting
+            runCatching { client.connectIntegrationExternal(mi.id, methodId, inputsFor(m)) }
+                .onSuccess {
+                    notice = I18n.s.restartToApply
+                    pendingRestart = true
+                    statusText = null
+                    reload()
                 }
                 .onFailure {
                     statusText = null
@@ -366,6 +390,7 @@ fun IntegrationsSheet(
                             onPromptChange = { k, v -> promptValues = promptValues + (k to v) },
                             onKeyDraftChange = { v -> keyDrafts = keyDrafts + (mi.id to v) },
                             onConnectOAuth = { m -> begin(mi, m) },
+                            onConnectExternal = { m -> connectExternal(mi, m) },
                             onConnectKey = { m ->
                                 scope.launch {
                                     runCatching { client.connectIntegrationKey(mi.id, keyDrafts[mi.id] ?: "") }
@@ -397,6 +422,7 @@ private fun IntegrationCard(
     onKeyDraftChange: (String) -> Unit,
     onConnectOAuth: (IntegrationMethod) -> Unit,
     onConnectKey: (IntegrationMethod) -> Unit,
+    onConnectExternal: (IntegrationMethod) -> Unit,
     onDisconnect: (IntegrationConnection) -> Unit,
 ) {
     ClayCard(
@@ -456,16 +482,17 @@ private fun IntegrationCard(
                                 }
                             } else {
                                 OutlinedTextField(
-                                    value = promptValues[p.key] ?: "",
+                                    value = promptValues[p.key] ?: p.default.orEmpty(),
                                     onValueChange = { onPromptChange(p.key, it) },
                                     label = { Text(p.message) },
                                     placeholder = p.placeholder?.let { ph -> { Text(ph) } },
+                                    isError = p.required && (promptValues[p.key] ?: p.default.orEmpty()).isBlank(),
                                     singleLine = true,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
                         }
-                        TextButton(onClick = { onConnectOAuth(m) }) { Text(I18n.s.connect) }
+                        TextButton(onClick = { onConnectOAuth(m) }) { Text(I18n.s.connectBrowser) }
                     }
                     "key" -> {
                         OutlinedTextField(
@@ -475,7 +502,38 @@ private fun IntegrationCard(
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                         )
-                        TextButton(onClick = { onConnectKey(m) }) { Text(I18n.s.connect) }
+                        TextButton(onClick = { onConnectKey(m) }) { Text(I18n.s.connectKey) }
+                    }
+                    // `external` = kredensial yang sudah ada di perangkat (gcloud
+                    // auth, AWS profile). Tanpa attempt dan tanpa browser; server
+                    // membacanya sendiri dari rootfs proot.
+                    "external" -> {
+                        Text(m.label, style = MaterialTheme.typography.bodySmall)
+                        m.prompts.filter { promptVisible(it, promptValues) }.forEach { p ->
+                            if (p.options.isNotEmpty()) {
+                                Text(p.message, style = MaterialTheme.typography.labelSmall)
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    p.options.forEach { op ->
+                                        FilterChip(
+                                            selected = (promptValues[p.key] ?: p.default.orEmpty()) == op.value,
+                                            onClick = { onPromptChange(p.key, op.value) },
+                                            label = { Text(op.label) },
+                                        )
+                                    }
+                                }
+                            } else {
+                                OutlinedTextField(
+                                    value = promptValues[p.key] ?: p.default.orEmpty(),
+                                    onValueChange = { onPromptChange(p.key, it) },
+                                    label = { Text(p.message) },
+                                    placeholder = p.placeholder?.let { ph -> { Text(ph) } },
+                                    isError = p.required && (promptValues[p.key] ?: p.default.orEmpty()).isBlank(),
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+                        TextButton(onClick = { onConnectExternal(m) }) { Text(I18n.s.connectExternal) }
                     }
                     "env" -> {
                         Text(

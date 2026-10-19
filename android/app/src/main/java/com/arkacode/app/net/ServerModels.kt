@@ -179,9 +179,13 @@ data class IntegrationPrompt(
     val whenKey: String?,
     val whenOp: String?,
     val whenValue: String?,
+    // Field `external` (gcloud/AWS profile) butuh default terisi dan wajib diisi
+    // sebelum dikirim; server juga menolak dengan 400 bila kosong.
+    val default: String? = null,
+    val required: Boolean = false,
 )
 
-/** Metode autentikasi integrasi (oauth|key|env). */
+/** Metode autentikasi integrasi (oauth|key|env|external). */
 data class IntegrationMethod(
     val id: String?,
     val type: String,

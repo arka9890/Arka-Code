@@ -758,6 +758,11 @@ class OpenCodeClient(
                     whenKey = wh?.str("key"),
                     whenOp = wh?.str("op"),
                     whenValue = wh?.str("value"),
+                    default = po["default"]?.let { d ->
+                        (d as? JsonPrimitive)?.contentOrNull
+                            ?: (d as? JsonArray)?.joinToString(",") { (it as? JsonPrimitive)?.contentOrNull ?: "" }
+                    },
+                    required = (po["required"] as? JsonPrimitive)?.contentOrNull == "true",
                 )
             }
             IntegrationMethod(
@@ -878,5 +883,29 @@ class OpenCodeClient(
      */
     suspend fun removeCredential(credentialID: String) {
         call(deleteReq("/api/credential/" + java.net.URLEncoder.encode(credentialID, "UTF-8")))
+    }
+
+    /**
+     * Hubungkan integrasi bertipe `external` (Google ADC, AWS profile).
+     *
+     * Berbeda dengan [beginOAuth]: tanpa attempt dan tanpa browser — server
+     * membaca kredensial dari `gcloud auth` / konfigurasi AWS di dalam proot.
+     * Balas 204 kalau tersimpan, 400 kalau field wajib kosong.
+     */
+    suspend fun connectIntegrationExternal(
+        integrationId: String,
+        methodID: String,
+        inputs: Map<String, String>,
+    ) {
+        val body = buildJsonObject {
+            put("methodID", methodID)
+            put("answer", buildJsonObject { inputs.forEach { (k, v) -> put(k, v) } })
+        }
+        call(
+            postReq(
+                "/api/integration/" + java.net.URLEncoder.encode(integrationId, "UTF-8") + "/connect/external",
+                body.toString(),
+            ),
+        )
     }
 }
