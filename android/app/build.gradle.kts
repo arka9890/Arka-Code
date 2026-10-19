@@ -132,7 +132,7 @@ val downloadProotBinaries = tasks.register("downloadProotBinaries") {
     val outputDir = layout.buildDirectory.dir("generated/prootJniLibs").get().asFile
     val cacheDir = layout.buildDirectory.dir("proot-cache").get().asFile
     outputs.dir(outputDir)
-    inputs.property("prootVersion", arka.ProotBinaries.ABI_TO_ARCH.size)
+    inputs.property("prootVersion", arka.ProotBinaries.VERSIONS)
 
     onlyIf { !prootSkip }
 

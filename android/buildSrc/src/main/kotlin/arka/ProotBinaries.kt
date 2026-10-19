@@ -23,9 +23,24 @@ import java.net.URI
  */
 object ProotBinaries {
 
-    private const val PROOT_VERSION = "5.1.107.96"
-    private const val TALLOC_VERSION = "2.5.0"
-    private const val SHMEM_VERSION = "0.7"
+    /**
+     * Versi paket Termux yang dibundel.
+     *
+     * Catatan: `proot` harus mengikuti rilis Termux. Paket versi lama dihapus
+     * dari mirror begitu rilis baru keluar (mis. 5.1.107.96 hilang saat
+     * 5.1.107.97 rilis), sehingga build yang memakai versi lama akan 404
+     * diam-diam dan APK terbit tanpa binary proot.
+     */
+    const val PROOT_VERSION = "5.1.107.97"
+    const val TALLOC_VERSION = "2.5.0"
+    const val SHMEM_VERSION = "0.7"
+
+    /**
+     * Gabungan semua versi paket. Dipakai sebagai input Gradle dan isi penanda
+     * `outputDir/.proot-version`, supaya perubahan versi benar-benar
+     * memaksa unduhan ulang (bukan cuma mengubah konstanta).
+     */
+    val VERSIONS = "$PROOT_VERSION-$TALLOC_VERSION-$SHMEM_VERSION"
 
     /** Mirror paket Termux (semua sudah diverifikasi punya paket proot terbaru). */
     val MIRRORS = listOf(
@@ -76,6 +91,19 @@ object ProotBinaries {
     fun prepare(outputDir: File, cacheDir: File, log: (String) -> Unit): Int {
         outputDir.mkdirs()
         cacheDir.mkdirs()
+
+        // Binary hasil ekstraksi versi lain (mis. cache lama 5.1.107.96) harus
+        // dibuang dulu, jangan dipakai ulang diam-diam di bawah label versi baru.
+        val marker = File(outputDir, ".proot-version")
+        val cachedVersion = if (marker.exists()) marker.readText().trim() else null
+        if (cachedVersion != VERSIONS) {
+            outputDir.listFiles()?.forEach { child ->
+                if (child == marker) return@forEach
+                child.deleteRecursively()
+            }
+            log("[proot] versi berubah ($cachedVersion -> $VERSIONS), hasil ekstraksi lama dibersihkan")
+        }
+
         var readyAbis = 0
 
         for ((abi, arch) in ABI_TO_ARCH) {
@@ -87,7 +115,9 @@ object ProotBinaries {
             }
             var abiOk = true
             for (pkg in packages) {
-                val deb = File(cacheDir, "${pkg.name}-$arch.deb")
+                // Nama file cache sengaja memuat versi, supaya cache .96 tidak
+                // diekstrak ulang setelah pin naik ke .97.
+                val deb = File(cacheDir, pkg.path.substringAfterLast('/').replace("{arch}", arch))
                 if (!deb.exists()) {
                     val relative = pkg.path.replace("{arch}", arch)
                     var downloaded = false
@@ -118,6 +148,10 @@ object ProotBinaries {
             }
             if (abiOk && File(abiDir, "libproot.so").exists()) readyAbis++
         }
+
+        // Hanya tulis penanda kalau ada yang benar-benar siap; kalau gagal
+        // semua (offline), build berikutnya tetap mencoba ulang.
+        if (readyAbis > 0) marker.writeText(VERSIONS)
         return readyAbis
     }
 
