@@ -3,6 +3,7 @@ package com.arkacode.app.core
 import androidx.compose.runtime.snapshotFlow
 import com.arkacode.app.net.ChatItem
 import com.arkacode.app.net.OpenCodeClient
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 
 /**
@@ -44,12 +45,32 @@ class BuddyAgent(
         snapshotFlow { run.busy.value }.first { !it }
         run.error.value?.takeIf { it.isNotBlank() }?.let { throw IllegalStateException(it) }
 
-        val reply = replyForTurn(before, run.messages.value)
+        val reply = awaitReply(id, before)
             ?: throw IllegalStateException("tidak ada balasan yang selesai")
         reply.error?.takeIf { it.isNotBlank() }?.let { throw IllegalStateException(it) }
         return reply.texts.joinToString(" ").trim().ifEmpty {
             throw IllegalStateException("balasan tanpa teks")
         }
+    }
+
+    /**
+     * Tunggu balasan giliran ini benar-benar tersimpan di server.
+     *
+     * "Selesai" belum tentu berarti pesannya sudah ada: event SSE
+     * `session.execution.succeeded` menurunkan flag `busy` sebelum daftar pesan
+     * ter-update (daunannya baru disegarkan tiap 1,5 detik), jadi membaca
+     * daftar sekali saja menyimpulkan "tak ada balasan" padahal model sudah
+     * menjawab.
+     */
+    private suspend fun awaitReply(id: String, before: Set<String>): ChatItem.Assistant? {
+        var found: ChatItem.Assistant? = null
+        repeat(REPLY_TRIES) {
+            val messages = runCatching { client.listMessages(id) }.getOrNull() ?: emptyList()
+            replyForTurn(before, messages)?.let { found = it }
+            usableReply(before, messages)?.let { return it }
+            delay(REPLY_WAIT_MS)
+        }
+        return found
     }
 
     /**
@@ -84,6 +105,12 @@ class BuddyAgent(
         append("User said: ")
         append(said.trim())
     }
+
+    private companion object {
+        // Balasan muncul hitungan detik setelah event "selesai" server.
+        const val REPLY_TRIES = 10
+        const val REPLY_WAIT_MS = 500L
+    }
 }
 
 /**
@@ -99,3 +126,17 @@ class BuddyAgent(
 fun replyForTurn(before: Set<String>, messages: List<ChatItem>): ChatItem.Assistant? =
     messages.filterIsInstance<ChatItem.Assistant>()
         .lastOrNull { it.id !in before && isTerminalFinish(it.finish) }
+
+/**
+ * Balasan yang benar-benar siap dibacakan: selesai DAN ada isinya.
+ *
+ * Assistant tanpa teks berarti server baru menyimpan `finish`-nya, isinya belum
+ * — itu belum jawaban, dan menunggu lebih lama masih berguna. Assistant yang
+ * membawa error sudah siap: galatnya harus langsung tampil, bukan menunggu
+ * teks yang memang tidak akan pernah datang.
+ *
+ * Fungsi murni supaya bisa dites tanpa server maupun Android.
+ */
+fun usableReply(before: Set<String>, messages: List<ChatItem>): ChatItem.Assistant? =
+    replyForTurn(before, messages)
+        ?.takeIf { it.error?.isNotBlank() == true || it.texts.any { t -> t.isNotBlank() } }

@@ -84,4 +84,23 @@ class BuddyAgentTest {
         assertTrue(isTerminalFinish("stop"))
         assertTrue(isTerminalFinish("length"))
     }
+
+    @Test
+    fun `balasan yang teksnya belum tersimpan belum dianggap siap`() {
+        // `finish` sudah terlihat tapi isinya belum disimpan server.
+        val messages = listOf(asst("a2", "", finish = "stop"))
+        assertNull(usableReply(emptySet(), messages))
+    }
+
+    @Test
+    fun `balasan yang teksnya ada dipakai`() {
+        val messages = listOf(asst("a2", "halo balik"))
+        assertEquals("halo balik", usableReply(emptySet(), messages)?.texts?.first())
+    }
+
+    @Test
+    fun `galat assistant dipakai tanpa menunggu teks yang tak akan datang`() {
+        val messages = listOf(asst("a2", "", finish = "error", error = "model tidak tersedia"))
+        assertEquals("model tidak tersedia", usableReply(emptySet(), messages)?.error)
+    }
 }
