@@ -29,7 +29,7 @@ import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * Arka Buddy — maskot chibi anime, digambar sepenuhnya dengan Compose Canvas.
+ * Aru-chan — maskot chibi anime, digambar sepenuhnya dengan Compose Canvas.
  *
  * Tidak ada Lottie / aset bitmap: seluruh geometri (rambut bob + poni lembut,
  * ahoge bercahaya, mata besar berkilau, pipi merona, hoodie, tangan, kaki)
@@ -271,7 +271,7 @@ private val FringeEdge = listOf(
 )
 
 /**
- * Avatar Arka Buddy. Isi kanvas dari [modifier], lalu gambar figur chibi
+ * Avatar Aru-chan. Isi kanvas dari [modifier], lalu gambar figur chibi
  * anime lengkap dengan animasi kedip, lirik, bicara, dan pose per mood.
  */
 @Composable

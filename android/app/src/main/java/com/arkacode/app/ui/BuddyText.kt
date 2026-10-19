@@ -1,13 +1,13 @@
 package com.arkacode.app.ui
 
 /**
- * String khusus Arka Buddy — sengaja di file terpisah dari `I18n.kt` agar tidak
+ * String khusus Aru-chan — sengaja di file terpisah dari `I18n.kt` agar tidak
  * menyentuh berkas yang dipegang user. Dibaca dari Composable sehingga ikut
  * berganti saat `I18n.lang` berubah.
  */
 object BuddyText {
-    val title: String get() = "Arka Buddy"
-    val nav: String get() = "Buddy"
+    val title: String get() = "Aru-chan"
+    val nav: String get() = "Aru-chan"
 
     // --- Suara ----------------------------------------------------------
 

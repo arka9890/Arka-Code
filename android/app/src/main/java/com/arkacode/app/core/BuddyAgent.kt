@@ -7,7 +7,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 
 /**
- * Percakapan Arka Buddy dengan engine opencode.
+ * Percakapan Aru-chan dengan engine opencode.
  *
  * Sesi dibuat sekali lalu dipakai ulang — antar giliran dan antar buka layar —
  * supaya Buddy punya ingatan percakapan dan daftar sesi tidak menumpuk.
@@ -97,7 +97,7 @@ class BuddyAgent(
      * tiap kali layar dibuka, giliran pertama habis dipakai menyimpan arahan.
      */
     private fun compose(said: String) = buildString {
-        appendLine("You are Arka Buddy, the voice assistant inside Arkacode.")
+        appendLine("You are Aru-chan, the voice assistant inside Arkacode.")
         appendLine("Reply as spoken language: at most 3 sentences, no markdown,")
         appendLine("no lists, no code, and no restating the question.")
         appendLine("Answer in the same language the user wrote in.")

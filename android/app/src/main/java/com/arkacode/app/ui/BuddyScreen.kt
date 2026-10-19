@@ -48,7 +48,7 @@ import com.arkacode.app.net.OpenCodeClient
 import kotlinx.coroutines.launch
 
 /**
- * Layar Arka Buddy.
+ * Layar Aru-chan.
  *
  * Tahap 1: wajah besar + pemilih keadaan, supaya tiap ekspresi bisa diperiksa
  * satu per satu.

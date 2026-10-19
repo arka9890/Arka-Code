@@ -8,7 +8,7 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 
 /**
- * Pembungkus `SpeechRecognizer` bawaan Android untuk Arka Buddy.
+ * Pembungkus `SpeechRecognizer` bawaan Android untuk Aru-chan.
  *
  * Dipilih karena: gratis, on-device (di beberapa perangkat), tanpa API key,
  * dan tanpa dependensi. Syaratnya izin RECORD_AUDIO dan ada penyedia layanan

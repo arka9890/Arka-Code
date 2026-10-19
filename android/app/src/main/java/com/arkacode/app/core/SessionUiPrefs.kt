@@ -69,7 +69,7 @@ class SessionUiPrefs(private val context: Context) {
         context.uiPrefsStore.edit { it[stringPreferencesKey("lang_code")] = code }
     }
 
-    // --- Arka Buddy --------------------------------------------------------
+    // --- Aru-chan --------------------------------------------------------
 
     /**
      * Sesi opencode milik Buddy, dipakai ulang antar giliran dan antar buka
