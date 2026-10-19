@@ -30,6 +30,16 @@ object TtsInstaller {
     /** Nama asset installer di dalam APK Arkacode. */
     const val ASSET_NAME = "tts-engine.apk"
 
+    /**
+     * Folder tempat installer disalin.
+     *
+     * Harus FOLDER, bukan nama file: `file_paths.xml` mendaftarkan folder ini
+     * sebagai root FileProvider, dan FileProvider menghitung path relatif
+     * dengan `substring(rootPath.length() + 1)` — kalau root-nya file, itu
+     * meleset dan URI-nya tak pernah terbentuk.
+     */
+    const val DIR_NAME = "tts-engine"
+
     /** Already terpasang? */
     fun isInstalled(context: Context): Boolean =
         runCatching {
@@ -50,7 +60,9 @@ object TtsInstaller {
      */
     suspend fun prepareInstall(context: Context): Result<Intent> = withContext(Dispatchers.IO) {
         runCatching {
-            val out = File(context.filesDir, ASSET_NAME)
+            val dir = File(context.filesDir, DIR_NAME)
+            dir.mkdirs()
+            val out = File(dir, ASSET_NAME)
             val expected = context.assets.open(ASSET_NAME).use { it.available() }
             // Berkas yang sudah ada & ukurannya cocok → pakai lagi, jangan
             // salin 148 MB berulang.
@@ -94,7 +106,9 @@ object TtsInstaller {
     /** Buang installer yang sudah tak dipakai (engine-nya sudah terpasang). */
     fun cleanup(context: Context) {
         if (!isInstalled(context)) return
-        runCatching { File(context.filesDir, ASSET_NAME).delete() }
+        runCatching {
+            File(context.filesDir, DIR_NAME).deleteRecursively()
+        }
     }
 
     /**

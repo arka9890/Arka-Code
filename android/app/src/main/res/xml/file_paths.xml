@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
-    <!-- Installer TTS engine disalin ke filesDir sebelum dibagikan ke
-         installer sistem; hanya berkas itu yang boleh dibaca lewat URI. -->
+    <!-- Folder khusus installer TTS engine. `path` WAJIB berakhiran "/":
+         kalau menunjuk file, FileProvider membuat root berupa FILE, lalu
+         menghitung path relatif dengan substring() yang meleset
+         (StringIndexOutOfBoundsException) dan URI tak pernah terbentuk. -->
     <files-path
         name="tts-engine"
-        path="tts-engine.apk" />
+        path="tts-engine/" />
 </paths>
