@@ -344,6 +344,15 @@ fun BuddyScreen(
             Text(BuddyText.speak)
         }
 
+        // Engine & voice yang sedang dipakai. Berguna saat suaranya tak
+        // sesuai harapan: dari sini kelihatan engine neural yang dipakai atau
+        // TTS bawaan sistem.
+        Text(
+            BuddyVoice.voiceInfo,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
         // Engine suara neural (sherpa-onnx) ikut dibundel di dalam APK ini, jadi
         // tak ada yang perlu diunduh — tinggal dipasang sekali. Setelah
         // terpasang, Aru-chan berbunyi neural: 10 suara Indonesia, tetap offline.

@@ -46,6 +46,17 @@ object BuddyVoice {
     private const val SPEECH_RATE = 0.98f
     private const val SPEECH_PITCH = 1.05f
 
+    /**
+     * Keterangan voice yang sedang dipakai: engine, nama voice, dan locale.
+     *
+     * Dibaca dari layar Buddy supaya jelas engine mana yang bicara — TTS
+     * neural (sherpa-onnx) atau bawaan sistem. Tanpa ini, "suara cewe
+     * kok terdengar cowok" cuma bisa ditebak.
+     */
+    @Volatile
+    var voiceInfo: String = "belum siap"
+        private set
+
     /** Teks dibersihkan & dipotong supaya satu ucapan tidak terlalu panjang. */
     fun fitText(raw: String, max: Int = 500): String = raw.trim().take(max).trimEnd()
 
@@ -90,7 +101,7 @@ object BuddyVoice {
             // Disiapkan di sini, bukan di dalam callback: callback bisa jalan
             // sebelum `engine` terisi, jadi `engine?.` di dalamnya bisa null
             // dan bahasa tak pernah dipasang.
-            prepare(created)
+            prepare(created, name)
             return created
         }
         destroy()
@@ -103,22 +114,40 @@ object BuddyVoice {
      *
      * Bila tak satu pun kode bahasa Indonesia diterima engine, bahasa
      * defaultnya dibiarkan — lebih baik daripada diam.
+     *
+     * @param engineName paket engine yang dipakai, null untuk engine sistem.
      */
-    private fun prepare(tts: TextToSpeech) {
+    private fun prepare(tts: TextToSpeech, engineName: String?) {
+        var bahasa: String = "?"
         for (locale in ID_LOCALES) {
             val result = tts.setLanguage(locale)
             if (result != TextToSpeech.LANG_MISSING_DATA &&
                 result != TextToSpeech.LANG_NOT_SUPPORTED
             ) {
+                bahasa = locale.toLanguageTag()
                 break
             }
         }
         val voices = tts.voices
-        pickVoice(voices.map { it.toChoice() })?.let { picked ->
+        val picked = pickVoice(voices.map { it.toChoice() })
+        // Voice cuma bisa diganti kalau engine punya lebih dari satu;
+        // engine neural hanya punya satu, dan `setVoice` di situ gagal.
+        if (picked != null && voices.size > 1) {
             voices.firstOrNull { it.name == picked.name }?.let { tts.voice = it }
         }
         tts.setSpeechRate(SPEECH_RATE)
         tts.setPitch(SPEECH_PITCH)
+
+        val chosen = voices.firstOrNull { picked == null || it.name == picked.name }
+        voiceInfo = buildString {
+            append(if (engineName != null) "sherpa-onnx" else "TTS sistem")
+            append(" · ")
+            append(chosen?.name ?: "?")
+            append(" · ")
+            append(chosen?.locale?.toLanguageTag() ?: "?")
+            append(" · ")
+            append(bahasa)
+        }
     }
 
     /**
