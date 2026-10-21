@@ -129,17 +129,25 @@ class EngineManager(private val context: Context) {
      */
     suspend fun ensureGuestLibs(): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val marker = File(distro.rootfsDir, "root/.guestlibs-ok")
-            if (!marker.isFile) {
-                val out = runOneShot(
-                    listOf("/sbin/apk", "add", "--no-cache", "libstdc++", "libgcc"),
-                    180_000,
-                )
-                if (out.contains("ERROR", ignoreCase = true)) {
-                    throw IllegalStateException("apk gagal: ${out.trim().take(500)}")
-                }
-                runCatching { marker.writeText("ok") }
+            // 1. Runtime musl universal: membawa libstdc++ + libgcc sendiri,
+            //    jadi tidak perlu memasang paket distro. Ini yang membuat
+            //    binary opencode (musl-dinamis) jalan di distro glibc juga.
+            val arch = MuslRuntime.archFor(distro.abi)
+            if (arch != null && MuslRuntime.stageEngineLibs(context, arch)) {
+                return@runCatching
             }
+            // 2. Fallback: pasang lewat package manager distro (Alpine punya
+            //    /sbin/apk). Distro lain dilewati — tidak fatal.
+            val marker = File(distro.rootfsDir, "root/.guestlibs-ok")
+            if (marker.isFile) return@runCatching
+            val out = runOneShot(
+                listOf("/sbin/apk", "add", "--no-cache", "libstdc++", "libgcc"),
+                180_000,
+            )
+            if (out.contains("ERROR", ignoreCase = true)) {
+                throw IllegalStateException("apk gagal: ${out.trim().take(500)}")
+            }
+            runCatching { marker.writeText("ok") }
         }
     }
 
@@ -572,6 +580,9 @@ class EngineManager(private val context: Context) {
             // Reap sisa server lama (mis. proses yang selamat saat app di-restart / versi
             // engine baru baru saja dipasang) agar port tidak bentrok saat bind.
             reapStrayServers()
+            // Pastikan runtime musl ada di rootfs (loader + libc) — binary
+            // opencode musl-dinamis tidak bisa start tanpa itu di distro glibc.
+            distro.ensureMuslRuntime()
             ensureGuestLibs().getOrThrow()
             workDir.mkdirs()
             logFile().appendText("\n===== serve start port=$port =====\n")

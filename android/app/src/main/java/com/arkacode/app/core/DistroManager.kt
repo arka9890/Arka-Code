@@ -377,6 +377,64 @@ class DistroManager(
                 "export PATH=${guestPathValue()}\nexport PS1='\\$ '\\n",
             )
         }
+        // Runtime musl: tanpa ini binary opencode (musl-dinamis) tidak bisa
+        // jalan di distro non-Alpine.
+        ensureMuslRuntime()
+    }
+
+    /**
+     * Pasang runtime musl ke dalam rootfs.
+     *
+     * Idempoten — aman dipanggil berulang (mis. saat server start, untuk
+     * distro yang dipasang sebelum fitur ini ada).
+     *
+     * Binary opencode dibangun untuk musl dan dinamis
+     * (`PT_INTERP=/lib/ld-musl-<arch>.so.1`,
+     * `DT_NEEDED=libstdc++.so.6, libc.musl-<arch>.so.1`). Di distro glibc
+     * (Ubuntu/Debian/Fedora/…) file-file itu tidak ada, sehingga `execve`
+     * gagal dengan ENOENT dan muncul sebagai
+     * `env: '/opt/arkacode/opencode': No such file or directory`.
+     *
+     * Yang dipasang:
+     *  1. loader musl + libc → `<rootfs>/lib/` (PT_INTERP dicari kernel di
+     *     `/lib`, jadi harus persis di sana).
+     *  2. `libstdc++.so.6` + `libgcc_s.so.1` → folder engine, yang di-bind ke
+     *     `/opt/arkacode/lib` di dalam guest.
+     *  3. `<rootfs>/etc/ld-musl-<arch>.path` → `/opt/arkacode/lib`, supaya
+     *     loader musl mencari library DI SITU (bukan libstdc++ glibc milik
+     *     distro, yang tidak kompatibel).
+     */
+    fun ensureMuslRuntime() {
+        val arch = MuslRuntime.archFor(abi) ?: return
+        val dir = MuslRuntime.ensure(context, arch) ?: return
+        val loader = File(dir, "ld-musl-$arch.so.1")
+        if (!loader.isFile) return
+
+        // 1. loader + libc ke <rootfs>/lib
+        val libDir = File(rootfsDir, "lib")
+        if (!libDir.isDirectory) runCatching { libDir.mkdirs() }
+        val loaderTarget = File(libDir, loader.name)
+        if (!loaderTarget.isFile) {
+            runCatching { loader.copyTo(loaderTarget, overwrite = true) }
+        }
+        val libcTarget = File(libDir, "libc.musl-$arch.so.1")
+        if (!libcTarget.exists()) {
+            runCatching {
+                Files.createSymbolicLink(Paths.get(libcTarget.absolutePath), Paths.get(loader.name))
+            }.onFailure {
+                runCatching { loader.copyTo(libcTarget, overwrite = true) }
+            }
+        }
+
+        // 2. libstdc++ + libgcc ke folder engine (-> /opt/arkacode/lib di guest)
+        MuslRuntime.stageEngineLibs(context, arch)
+
+        // 3. file path milik musl
+        val etcDir = File(rootfsDir, "etc")
+        if (!etcDir.isDirectory) runCatching { etcDir.mkdirs() }
+        runCatching {
+            File(etcDir, "ld-musl-$arch.path").writeText(MuslRuntime.GUEST_LIB_DIR)
+        }
     }
 
     fun remove() {
@@ -846,7 +904,19 @@ class DistroManager(
         return dir
     }
 
-    /** Diagnostik cepat: dipakai tombol "Tes distro" di Settings. */
-    fun diagnosticCommand(): String =
-        "cat /etc/alpine-release 2>/dev/null; uname -a; id; echo workspace:; ls -a /root/workspace 2>/dev/null | head -20"
+    /**
+     * Diagnostik cepat: dipakai tombol "Tes distro" di Settings.
+     *
+     * termasuk pemeriksaan runtime musl — kalau loader-nya tidak ada di
+     * `/lib`, binary opencode (musl-dinamis) tidak akan bisa start.
+     */
+    fun diagnosticCommand(): String {
+        val arch = MuslRuntime.archFor(abi) ?: "aarch64"
+        return "cat /etc/alpine-release 2>/dev/null; cat /etc/os-release 2>/dev/null | head -3; " +
+            "uname -a; id; " +
+            "echo 'musl loader:'; ls -l /lib/ld-musl-$arch.so.1 /lib/libc.musl-$arch.so.1 2>&1; " +
+            "echo 'musl path:'; cat /etc/ld-musl-$arch.path 2>&1; " +
+            "echo 'engine libs:'; ls -l /opt/arkacode/lib 2>&1 | head -5; " +
+            "echo workspace:; ls -a /root/workspace 2>/dev/null | head -20"
+    }
 }

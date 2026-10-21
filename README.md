@@ -170,6 +170,35 @@ symlink-nya. Karena binary Termux dibangun untuk bionic Android
 (PT_INTERP `/system/bin/linker64`), app juga me-bind `/system`, `/apex`, dan
 `/vendor` ke guest.
 
+### Runtime musl (kenapa server gagal start di distro non-Alpine)
+
+Binary `opencode` (paket npm `@opencode/cli-linux-arm64-musl`) dibangun untuk
+musl dan **dinamis**:
+
+```
+PT_INTERP = /lib/ld-musl-aarch64.so.1
+DT_NEEDED = libstdc++.so.6, libc.musl-aarch64.so.1
+```
+
+Di Alpine (musl) semua ada ✓. Di distro glibc (Ubuntu/Debian/Fedora/Arch/…)
+file-file itu tidak ada, sehingga `execve` gagal dengan ENOENT dan gejalanya:
+
+```
+/usr/bin/env: '/opt/arkacode/opencode': No such file or directory
+```
+
+App memasang runtime musl ke rootfs mana pun:
+
+| Berkas | Diletakkan di | Alasan |
+|---|---|---|
+| `ld-musl-<arch>.so.1` + `libc.musl-<arch>.so.1` | `<rootfs>/lib/` | PT_INTERP dicari kernel di `/lib` |
+| `libstdc++.so.6` + `libgcc_s.so.1` | `<filesDir>/engine/lib/` → `/opt/arkacode/lib` di guest | dipakai loader musl |
+| — | `<rootfs>/etc/ld-musl-<arch>.path` → `/opt/arkacode/lib` | file konfigurasi search path milik musl, sehingga libstdc++ musl tidak bentrok dengan libstdc++ glibc milik distro |
+
+Runtime diambil dari paket Alpine (`musl`, `libstdc++`, `libgcc` — libc yang
+dipakai untuk membangun binary opencode), diunduh sekali lalu di-cache di
+`filesDir/musl/`. Ukurannya ±1,3 MB.
+
 > Berganti distro/runtime butuh **restart server** (Pengaturan → Stop → jalankan
 > lagi), karena proot dan env server sudah ditentukan saat proses start.
 
