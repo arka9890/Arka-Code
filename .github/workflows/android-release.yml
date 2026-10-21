@@ -12,8 +12,6 @@ name: Android Release (signed APK)
 # workflow "Build Android APK").
 
 on:
-  push:
-    tags: ['v*']
   workflow_dispatch:
 
 permissions:
