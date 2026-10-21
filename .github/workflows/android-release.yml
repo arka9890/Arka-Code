@@ -1,18 +1,19 @@
 name: Android Release (signed APK)
 
-# Rilis APK bertanda tangan saat tag v* (mis. `git tag v0.2.0 && git push origin v0.2.0`).
-#
-# Secret yang dibutuhkan (Settings → Secrets and variables → Actions):
-#   KEYSTORE_BASE64   : hasil `base64 -w0 arka-release.jks`
-#   KEYSTORE_PASSWORD : password keystore
-#   KEY_ALIAS         : alias key
-#   KEY_PASSWORD      : password key
-#
-# Kalau secret belum ada, workflow ini dilewati (build debug tetap jalan lewat
-# workflow "Build Android APK").
+# Rilis APK: ditandatangani lewat keystore yang TER-COMMIT (android/arkacode
+# .keystore + keystore.properties) — tanpa secret repo sama sekali.
+# Dijalankan otomatis saat tag v* (mis. push tag v0.2.1); manual dispatch
+# juga bisa, isi input "tag_name" bila ingin langsung terbit Release.
 
 on:
   workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag rilis (contoh: v0.2.1) — kosong = hanya artifact'
+        required: false
+        default: ''
+  push:
+    tags: ['v*']
 
 permissions:
   contents: write
@@ -23,47 +24,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cek ketersediaan signing secret
-        id: signing
-        run: |
-          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ] && [ -n "${{ secrets.KEYSTORE_PASSWORD }}" ] \
-             && [ -n "${{ secrets.KEY_ALIAS }}" ] && [ -n "${{ secrets.KEY_PASSWORD }}" ]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Secret signing belum diisi — rilis ditandatangani dilewati."
-          fi
-
       - name: Set up JDK 21
-        if: steps.signing.outputs.available == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
 
       - name: Set up Gradle
-        if: steps.signing.outputs.available == 'true'
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Tulis keystore + keystore.properties
-        if: steps.signing.outputs.available == 'true'
-        working-directory: android
-        run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > arka-release.jks
-          cat > keystore.properties <<EOF
-          storeFile=arka-release.jks
-          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
-          keyAlias=${{ secrets.KEY_ALIAS }}
-          keyPassword=${{ secrets.KEY_PASSWORD }}
-          EOF
-
       - name: Build release APK
-        if: steps.signing.outputs.available == 'true'
         working-directory: android
         run: chmod +x gradlew && ./gradlew :app:assembleRelease --stacktrace
 
       - name: Upload artifact
-        if: steps.signing.outputs.available == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: arkacode-release-apk
@@ -71,12 +45,9 @@ jobs:
           if-no-files-found: error
 
       - name: Publish GitHub Release
-        if: steps.signing.outputs.available == 'true' && startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.tag_name != ''
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || inputs.tag_name }}
           files: android/app/build/outputs/apk/release/*.apk
           generate_release_notes: true
-
-      - name: Bersihkan keystore
-        if: always()
-        run: rm -f android/arka-release.jks android/keystore.properties
