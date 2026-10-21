@@ -208,20 +208,25 @@ object DistroCatalog {
             .lastOrNull()
     }
 
-    private fun fetchText(url: String): String? = try {
-        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 15_000
-            readTimeout = 20_000
-            instanceFollowRedirects = true
-            setRequestProperty("User-Agent", "Arkacode-Android")
+    private fun fetchText(url: String): String? {
+        return try {
+            val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 15_000
+                readTimeout = 20_000
+                instanceFollowRedirects = true
+                setRequestProperty("User-Agent", "Arkacode-Android")
+            }
+            try {
+                if (conn.responseCode !in 200..299) {
+                    null
+                } else {
+                    conn.inputStream.bufferedReader().use { it.readText() }
+                }
+            } finally {
+                conn.disconnect()
+            }
+        } catch (e: Exception) {
+            null
         }
-        try {
-            if (conn.responseCode !in 200..299) return null
-            conn.inputStream.bufferedReader().use { it.readText() }
-        } finally {
-            conn.disconnect()
-        }
-    } catch (e: Exception) {
-        null
     }
 }

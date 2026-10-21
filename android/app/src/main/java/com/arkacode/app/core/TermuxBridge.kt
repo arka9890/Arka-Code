@@ -259,38 +259,46 @@ class TermuxBridge(private val context: Context) {
      *  - MediaStore Downloads: app boleh insert tanpa izin khusus, dan Termux
      *    (dengan storage permission) bisa menulis ke path yang sama.
      */
-    fun createOutputSink(tag: String = "arkacode"): OutputSink? = runCatching {
+    fun createOutputSink(tag: String = "arkacode"): OutputSink? {
         val name = "$tag-${System.currentTimeMillis()}.txt"
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val downloads = android.provider.MediaStore.Downloads.getContentUri(
-                android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY,
-            )
-            val values = android.content.ContentValues().apply {
-                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name)
-                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/plain")
-                put(
-                    android.provider.MediaStore.MediaColumns.RELATIVE_PATH,
+        return runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val downloads = android.provider.MediaStore.Downloads.getContentUri(
+                    android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY,
+                )
+                val values = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name)
+                    put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/plain")
+                    put(
+                        android.provider.MediaStore.MediaColumns.RELATIVE_PATH,
+                        android.os.Environment.DIRECTORY_DOWNLOADS,
+                    )
+                }
+                val uri = context.contentResolver.insert(downloads, values)
+                if (uri == null) {
+                    null
+                } else {
+                    // Path filesystem yang setara — inilah yang ditulis Termux.
+                    val file = File(android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS,
+                    ), name)
+                    OutputSink(file = file, uri = uri)
+                }
+            } else {
+                // Android 9 dan lebih lama: belum ada koleksi Downloads di
+                // MediaStore — pakai berkas langsung di folder Download publik.
+                val dir = android.os.Environment.getExternalStoragePublicDirectory(
                     android.os.Environment.DIRECTORY_DOWNLOADS,
                 )
+                if (!dir.isDirectory) {
+                    null
+                } else {
+                    val file = File(dir, name)
+                    OutputSink(file = file, uri = Uri.fromFile(file))
+                }
             }
-            val uri = context.contentResolver.insert(downloads, values)
-                ?: return null
-            // Path filesystem yang setara — inilah yang ditulis Termux.
-            val file = File(android.os.Environment.getExternalStoragePublicDirectory(
-                android.os.Environment.DIRECTORY_DOWNLOADS,
-            ), name)
-            OutputSink(file = file, uri = uri)
-        } else {
-            // Android 9 dan lebih lama: belum ada koleksi Downloads di
-            // MediaStore — pakai berkas langsung di folder Download publik.
-            val dir = android.os.Environment.getExternalStoragePublicDirectory(
-                android.os.Environment.DIRECTORY_DOWNLOADS,
-            )
-            if (!dir.isDirectory) return null
-            val file = File(dir, name)
-            OutputSink(file = file, uri = Uri.fromFile(file))
-        }
-    }.getOrNull()
+        }.getOrNull()
+    }
 
     /** Corong output: berkas di filesystem + URI MediaStore untuk dibaca app. */
     data class OutputSink(val file: File, val uri: Uri)

@@ -198,7 +198,8 @@ fun SettingsScreen(
                             engineVersion?.let { I18n.s.engineInstalled(EngineRelease.bare(it)) }
                                 ?: I18n.s.engineNotInstalled,
                             style = MaterialTheme.typography.bodySmall,
-                        )                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(I18n.s.engineAutoUpdate, modifier = Modifier.weight(1f))
                             Switch(
                                 checked = autoUpdate,
