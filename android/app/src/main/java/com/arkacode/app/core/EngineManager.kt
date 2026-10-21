@@ -713,10 +713,11 @@ class EngineManager(private val context: Context) {
             "-b", distro.rootfsDir.absolutePath + "/tmp:/dev/shm",
             "-b", "${pw.absolutePath}:/root/workspace",
             "-b", "${engineDir.absolutePath}:/opt/arkacode",
-            "/usr/bin/env",
+        ) + distro.extraBindArgs() + mutableListOf(
+            distro.guestEnvPath(),
             "-i",
-            "HOME=/root",
-            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "HOME=${distro.guestHomePath()}",
+            "PATH=${distro.guestPathValue()}",
             "TERM=xterm-256color",
             "LANG=C.UTF-8",
             "PROOT_LOADER=${loader.absolutePath}",
@@ -724,7 +725,8 @@ class EngineManager(private val context: Context) {
             "PROOT_NO_SECCOMP=1",
             "OPENCODE_DISABLE_AUTOUPDATE=1",
             "OPENCODE_SERVER_PASSWORD=$password",
-        ) + extraEnv.map { (k, v) -> "$k=$v" } + listOf(
+        ) + distro.guestExtraEnv().map { (k, v) -> "$k=$v" } +
+            extraEnv.map { (k, v) -> "$k=$v" } + listOf(
             "/opt/arkacode/opencode",
             "serve",
             "--port", port.toString(),

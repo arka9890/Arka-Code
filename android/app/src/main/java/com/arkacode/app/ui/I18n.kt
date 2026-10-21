@@ -239,6 +239,9 @@ data class Strings(
     val distroSaved: String,
     val distroOpen: String,
     val distroSummary: String,
+    val distroNotAvailable: String,
+    val distroGroupOther: String,
+    val distroGroupCustom: String,
 )
 
 private val id = Strings(
@@ -455,6 +458,9 @@ private val id = Strings(
     distroSaved = "Distro disimpan.",
     distroOpen = "Buka pengaturan distro",
     distroSummary = "Pilih runtime eksekusi command (proot atau Termux) dan distro rootfs yang dipakai.",
+    distroNotAvailable = "Tidak tersedia untuk arsitektur perangkat ini.",
+    distroGroupOther = "Lain-lain",
+    distroGroupCustom = "Kustom",
 )
 
 private val en = Strings(
@@ -671,6 +677,9 @@ private val en = Strings(
     distroSaved = "Distro saved.",
     distroOpen = "Open distro settings",
     distroSummary = "Choose the command runtime (proot or Termux) and the rootfs distro to use.",
+    distroNotAvailable = "Not available for this device architecture.",
+    distroGroupOther = "Others",
+    distroGroupCustom = "Custom",
 )
 
 /** Registry bahasa global (state Compose → recompose otomatis saat diganti). */

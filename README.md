@@ -46,10 +46,19 @@ sampingnya, putih di atas biru brand `#5B9BE0`.
 - **Engine** — unduh binary opencode pinned (sha256), start/stop, health,
   auto-provisioning saat pertama buka, editor port & password server, log.
 - **Distro & runtime** — pilih distro rootfs yang dipakai untuk eksekusi
-  command: **Alpine 3.20 (LTS) / 3.21 / 3.22 / edge**, atau **rootfs sendiri**
-  (URL `.tar.gz`/`.tar.xz` atau berkas dari penyimpanan — mis. Debian/Ubuntu).
+  command. Katalog bawaan:
+  - **Alpine** 3.20 (LTS) / 3.21 / 3.22 / edge
+  - **Ubuntu** 24.04 LTS / 22.04 LTS (image resmi Canonical) & 25.04
+  - **Debian** 13 (trixie) / 12 (bookworm)
+  - **Termux (built-in)** — userland Termux asli (`bash`, `pkg`, `apt`) tanpa
+    perlu memasang aplikasi Termux
+  - **Lain-lain** — Fedora, Arch Linux, openSUSE, Void, Rocky, AlmaLinux,
+    Manjaro, Deepin
+  - **Rootfs sendiri** — URL `.tar.gz`/`.tar.xz`/`.zip` atau berkas dari
+    penyimpanan (mis. basis Debian/Ubuntu lain)
+
   Runtime alternatif: jalankan `opencode serve` di dalam aplikasi **Termux**
-  yang terpasang, tanpa rootfs sama sekali. Rootfs tiap distro disimpan
+  yang sudah terpasang, tanpa rootfs sama sekali. Rootfs tiap distro disimpan
   terpisah, jadi bisa berganti tanpa mengunduh ulang.
 - **i18n ID/EN**, tema claymorphism terang/gelap persisten, backup rules.
 
@@ -140,9 +149,26 @@ Menu **Pengaturan → Distro** menyediakan:
     terpasang, "Allow execution of scripts" diizinkan, dan `opencode` sudah
     terpasang di Termux (`pkg install nodejs-lts && npm i -g opencode-ai`).
   - Mode proot memakai rootfs yang diunduh app sendiri.
-- **Distro** — Alpine 3.20 / 3.21 / 3.22 / edge, atau "Rootfs sendiri".
-  Rootfs kustom bisa berupa URL `.tar.gz`/`.tar.xz` (Debian/Ubuntu/Fedora
-  dll.) maupun berkas yang dipilih lewat picker di aplikasi.
+- **Distro** — lihat daftar di atas. Rootfs kustom bisa berupa URL
+  `.tar.gz`/`.tar.xz`/`.zip` (Debian/Ubuntu/Fedora dll.) maupun berkas yang
+  dipilih lewat picker di aplikasi.
+
+Sumber rootfs:
+
+| Distro | Sumber |
+|---|---|
+| Alpine | `dl-cdn.alpinelinux.org` (minirootfs ±4 MB) + 4 mirror |
+| Ubuntu | `cdimage.ubuntu.com` (ubuntu-base resmi Canonical) |
+| Debian, Fedora, Arch, openSUSE, Void, Rocky, AlmaLinux, Manjaro, Deepin, Ubuntu 25.04 | release `termux/proot-distro` (rootfs siap pakai) |
+| Termux (built-in) | bootstrap resmi `termux/termux-packages` (userland Termux asli) |
+
+Detail teknis Termux built-in: bootstrap Termux adalah zip berisi isi `$PREFIX`
+dan symlink-nya disimpan terpisah di `SYMLINKS.txt` (format `target←linkpath`).
+App mengekstraknya ke `/data/data/com.termux/files/usr` di dalam guest —
+persis lokasi yang dipakai RUNPATH binary Termux — lalu membuat ulang
+symlink-nya. Karena binary Termux dibangun untuk bionic Android
+(PT_INTERP `/system/bin/linker64`), app juga me-bind `/system`, `/apex`, dan
+`/vendor` ke guest.
 
 > Berganti distro/runtime butuh **restart server** (Pengaturan → Stop → jalankan
 > lagi), karena proot dan env server sudah ditentukan saat proses start.

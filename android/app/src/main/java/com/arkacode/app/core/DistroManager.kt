@@ -59,6 +59,9 @@ class DistroManager(
 ) {
 
     companion object {
+        /** Nama berkas manifest symlink di dalam bootstrap Termux. */
+        const val SYMLINK_MANIFEST = "SYMLINKS.txt"
+
         const val DISTRO_NAME = "alpine"
 
         /**
@@ -106,6 +109,13 @@ class DistroManager(
     val rootfsDir: File get() = File(distroRoot, spec.folderName)
     private val tmpDir = File(context.filesDir, "proot-tmp").apply { mkdirs() }
 
+    /**
+     * Berapa komponen path pertama yang harus dibuang saat ekstraksi.
+     * Rootfs proot-distro dibungkus satu folder teratas (mis.
+     * `ubuntu-plucky-aarch64/`), jadi satu komponen harus dilepas.
+     */
+    private val stripCount: Int = if (spec.layout == RootfsLayout.STRIP_TOP_DIR) 1 else 0
+
     /** nativeLibraryDir berisi libproot.so / libtalloc.so / libproot-loader.so dari APK. */
     private val libDir: File = File(context.applicationInfo.nativeLibraryDir)
 
@@ -124,8 +134,12 @@ class DistroManager(
         ?.firstOrNull { it.name == "libandroid-shmem.so" }
 
     /**
-     * Rootfs dianggap terpasang kalau salah satu penanda distro ([spec.releaseMarkers])
-     * ada sebagai FILE biasa.
+     * Rootfs dianggap terpasang kalau salah satu penanda distro
+     * ([spec.releaseMarkers]) ada sebagai FILE biasa.
+     *
+     * Penanda per distro: `etc/alpine-release` (Alpine), `etc/os-release`
+     * (Ubuntu/Debian/Fedora/Arch/…), `data/data/com.termux/files/usr/bin/bash`
+     * (Termux built-in).
      *
      * Jangan pakai `bin/sh`: di Alpine itu symlink absolut `/bin/sh -> /bin/busybox`.
      * `File.exists()` mengikuti symlink ke path HOST Android (`/bin/busybox` tidak
@@ -133,9 +147,7 @@ class DistroManager(
      * Ini penyebab bug "sudah di-install tapi tidak terbaca".
      */
     fun isInstalled(): Boolean =
-        spec.releaseMarkers.any { File(rootfsDir, it).isFile } ||
-            File(rootfsDir, "etc/alpine-release").isFile ||
-            File(rootfsDir, "bin/busybox").isFile
+        spec.releaseMarkers.any { File(rootfsDir, it).isFile }
 
     fun status(): DistroStatus {
         val proot = prootBinary()
@@ -226,7 +238,8 @@ class DistroManager(
         return try {
             onProgress(0, "Mengunduh ${url.substringAfterLast('/')} (${index + 1}/${total})…")
             val tmpArchive = File(tmpDir, "rootfs" + archiveSuffix(url))
-            download(url) { percent, read, size ->
+            tmpArchive.delete()
+            download(url, tmpArchive) { percent, read, size ->
                 val label = if (size > 0) {
                     "Mengunduh ${read / 1024 / 1024} MB / ${size / 1024 / 1024} MB"
                 } else {
@@ -238,7 +251,7 @@ class DistroManager(
             // Bersihkan sisa instalasi sebelumnya supaya tidak campur.
             rootfsDir.deleteRecursively()
             rootfsDir.mkdirs()
-            extractTar(tmpArchive) { percent -> onProgress(52 + percent / 2, "Mengekstrak rootfs… $percent%") }
+            extractArchive(tmpArchive) { percent -> onProgress(52 + percent / 2, "Mengekstrak rootfs… $percent%") }
             tmpArchive.delete()
             check(isInstalled()) {
                 "Ekstraksi selesai tapi penanda distro (${spec.releaseMarkers.firstOrNull() ?: "os-release"}) tidak ada — arsip bukan rootfs ${spec.label}."
@@ -259,18 +272,19 @@ class DistroManager(
             path.endsWith(".tar.xz") -> ".tar.xz"
             path.endsWith(".tar.gz") || path.endsWith(".tgz") -> ".tar.gz"
             path.endsWith(".tar.zst") -> ".tar.zst"
+            path.endsWith(".zip") -> ".zip"
             else -> ".tar.gz"
         }
     }
 
-    /** Pasang dari file .tar.gz/.tar.xz lokal hasil SAF (opsi offline). */
+    /** Pasang dari file .tar.gz/.tar.xz/.zip lokal hasil SAF (opsi offline). */
     suspend fun installFromStream(input: InputStream, onProgress: (Int, String) -> Unit = { _, _ -> }): Result<Unit> =
         withContext(Dispatchers.IO) {
             runCatching {
                 onProgress(5, "Menyiapkan…")
                 rootfsDir.deleteRecursively()
                 rootfsDir.mkdirs()
-                extractTar(input) { percent -> onProgress(5 + percent * 9 / 10, "Mengekstrak rootfs… $percent%") }
+                extractArchive(input) { percent -> onProgress(5 + percent * 9 / 10, "Mengekstrak rootfs… $percent%") }
                 check(isInstalled()) {
                     "Arsip bukan rootfs yang dikenal (penanda ${spec.releaseMarkers.firstOrNull() ?: "os-release"} tidak ditemukan)."
                 }
@@ -287,14 +301,35 @@ class DistroManager(
             Result.success(Unit)
         }
 
+    /**
+     * Persiapan setelah rootfs diekstrak.
+     *
+     * - `/root/workspace` — tempat file sesi (di-bind proot).
+     * - `resolv.conf` + `hosts` — supaya DNS & localhost jalan di dalam guest.
+     *   Untuk layout Termux, file-nya ada di dalam prefix (`<prefix>/etc`),
+     *   jadi ditulis di kedua tempat.
+     */
     private fun postInstall() {
         // NOTE F0: sinkron kredensial git (GitCredentials) dipasang di F2 bersama layar Providers/Auth.
         runCatching {
             File(rootfsDir, "root/workspace").mkdirs()
-            File(rootfsDir, "etc/resolv.conf").writeText("nameserver 1.1.1.1\nnameserver 8.8.8.8\n")
-            File(rootfsDir, "etc/hosts").writeText("127.0.0.1 localhost\n::1 localhost\n")
+            val resolv = "nameserver 1.1.1.1\nnameserver 8.8.8.8\n"
+            val hosts = "127.0.0.1 localhost\n::1 localhost\n"
+            val etcDirs = buildList {
+                add(File(rootfsDir, "etc"))
+                if (spec.extractDir.isNotEmpty()) add(File(rootfsDir, "$spec.extractDir/etc"))
+            }
+            etcDirs.forEach { dir ->
+                dir.mkdirs()
+                File(dir, "resolv.conf").writeText(resolv)
+                File(dir, "hosts").writeText(hosts)
+            }
+            // Termux memakai $PREFIX/home sebagai HOME.
+            if (spec.extractDir.isNotEmpty()) {
+                File(rootfsDir, "$spec.extractDir/home").mkdirs()
+            }
             File(rootfsDir, "root/.profile").writeText(
-                "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\nexport PS1='\\$ '\\n",
+                "export PATH=${guestPathValue()}\nexport PS1='\\$ '\\n",
             )
         }
     }
@@ -307,9 +342,9 @@ class DistroManager(
 
     private fun download(
         url: String,
+        target: File,
         onProgress: (Int, Long, Long) -> Unit,
     ): File {
-        val target = File(tmpDir, "rootfs.tar.gz")
         val conn = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 20_000
             readTimeout = 60_000
@@ -345,6 +380,142 @@ class DistroManager(
         }
     }
 
+    /**
+     * Ekstraksi arsip rootfs — format ditentukan dari magic bytes, bukan dari
+     * ekstensi (URL bisa tanpa ekstensi).
+     *
+     * Zip dipakai bootstrap Termux; tar dipakai Alpine/ubuntu-base/proot-distro.
+     */
+    private fun extractArchive(source: File, onProgress: (Int) -> Unit = {}): Unit {
+        BufferedInputStream(source.inputStream()).use { extractArchive(it, onProgress) }
+    }
+
+    /** Ekstraksi dari stream (berkas lokal hasil SAF) — format ditentukan magic bytes. */
+    private fun extractArchive(input: InputStream, onProgress: (Int) -> Unit = {}) {
+        val head = ByteArray(4)
+        var read = 0
+        val buffered = BufferedInputStream(input)
+        while (read < head.size) {
+            val n = buffered.read(head, read, head.size - read)
+            if (n < 0) break
+            read += n
+        }
+        val replay = java.io.SequenceInputStream(java.io.ByteArrayInputStream(head.copyOf(read)), buffered)
+        val isZip = read >= 2 && head[0] == 'P'.code.toByte() && head[1] == 'K'.code.toByte()
+        if (isZip) extractZip(replay, onProgress)
+        else extractTar(replay, onProgress)
+    }
+
+    /**
+     * Ekstraksi zip (bootstrap Termux).
+     *
+     * Dua perbedaan dari tar:
+     *  1. Isi zip diletakkan di [DistroSpec.extractDir] (untuk Termux:
+     *     `data/data/com.termux/files/usr`) — bukan langsung di rootfs.
+     *  2. Symlink tidak disimpan sebagai entri zip; Termux menaruhnya di
+     *     berkas `SYMLINKS.txt` dengan format `target←linkpath`.
+     *     Contoh: `dash←./bin/sh` berarti symlink `bin/sh` → `dash`.
+     */
+    private fun extractZip(input: InputStream, onProgress: (Int) -> Unit = {}) {
+        val baseDir = if (spec.extractDir.isEmpty()) rootfsDir else File(rootfsDir, spec.extractDir)
+        baseDir.mkdirs()
+        val root = rootfsDir.canonicalFile
+        var symlinkManifest: String? = null
+        var count = 0
+        java.util.zip.ZipInputStream(input).use { zip ->
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                val raw = entry.name.replace('\\', '/').removePrefix("./")
+                if (raw.isBlank()) continue
+                if (raw == SYMLINK_MANIFEST) {
+                    symlinkManifest = zip.readBytes().toString(Charsets.UTF_8)
+                    continue
+                }
+                val relative = stripComponents(raw, stripCount)
+                if (relative.isNullOrBlank()) continue
+                val target = File(baseDir, relative)
+                if (entry.isDirectory) {
+                    target.mkdirs()
+                    continue
+                }
+                val canonical = runCatching { target.canonicalFile }.getOrNull() ?: continue
+                if (!canonical.path.startsWith(root.path + File.separator)) continue
+                canonical.parentFile?.mkdirs()
+                canonical.outputStream().use { out -> zip.copyTo(out) }
+                count++
+                if (count % 200 == 0) onProgress((count / 40).coerceAtMost(100))
+            }
+        }
+        symlinkManifest?.let { applySymlinkManifest(it, baseDir) }
+    }
+
+    /**
+     * Terapkan daftar symlink dari manifest Termux.
+     *
+     * Format tiap baris: `target←linkpath`.
+     *  - `linkpath` = lokasi symlink (relatif terhadap prefix, atau absolut
+     *    di dalam prefix Termux).
+     *  - `target` = tujuan symlink. Termux menulisnya relatif terhadap
+     *    direktori symlink (`dash←./bin/sh` -> `bin/sh` -> `dash`), tapi
+     *    beberapa entri lisensi menulisnya relatif terhadap prefix. Jadi
+     *    keduanya dicoba.
+     */
+    private fun applySymlinkManifest(manifest: String, baseDir: File) {
+        manifest.lineSequence().forEach { line ->
+            val parts = line.split('←')
+            if (parts.size != 2) return@forEach
+            val target = parts[0].trim()
+            val linkPath = parts[1].trim()
+            if (target.isEmpty() || linkPath.isEmpty()) return@forEach
+            val link = resolveGuestPath(baseDir, linkPath) ?: return@forEach
+            val linkDir = link.parentFile ?: return@forEach
+            // Target harus benar-benar ada, kalau tidak symlink jadi sia-sia.
+            val resolved = resolveGuestPath(linkDir, target)
+                ?: resolveGuestPath(baseDir, target)
+                ?: return@forEach
+            if (!resolved.exists()) return@forEach
+            runCatching {
+                link.parentFile?.mkdirs()
+                link.delete()
+                Files.createSymbolicLink(Paths.get(link.absolutePath), Paths.get(target))
+            }
+        }
+    }
+
+    /**
+     * Resolve path di dalam rootfs.
+     *
+     * Path absolut yang diawali prefix distro (mis. `/data/data/com.termux/files/usr`)
+     * dipetakan ke folder prefix di dalam rootfs; path absolut lain dipetakan
+     * ke rootfs. Path relatif dihitung relatif terhadap [base].
+     */
+    private fun resolveGuestPath(base: File, path: String): File? {
+        val norm = path.replace('\\', '/')
+        val root = runCatching { rootfsDir.canonicalFile }.getOrNull() ?: return null
+        val prefix = spec.guestPrefix
+        val candidate = when {
+            !norm.startsWith("/") -> File(base, norm)
+            prefix.isNotEmpty() && (norm == prefix || norm.startsWith("$prefix/")) ->
+                File(base, norm.removePrefix(prefix).trimStart('/'))
+            prefix.isEmpty() -> File(root, norm.trimStart('/'))
+            else -> return null // di luar prefix distro -> jangan sentuh
+        }
+        val canonical = runCatching { candidate.canonicalFile }.getOrNull() ?: return null
+        if (!canonical.path.startsWith(root.path + File.separator)) return null
+        return canonical
+    }
+
+    /**
+     * Buang [count] komponen pertama dari path (untuk tarball proot-distro yang
+     * punya satu folder teratas). Null kalau tidak ada komponen yang tersisa.
+     */
+    private fun stripComponents(name: String, count: Int): String? {
+        if (count <= 0) return name
+        val parts = name.split('/').filter { it.isNotEmpty() && it != "." }
+        if (parts.size <= count) return null
+        return parts.drop(count).joinToString("/")
+    }
+
     /** Ekstraksi .tar(.gz/.xz/.zst) aman (menolak path keluar rootfs + menangani symlink/hardlink). */
     private fun extractTar(source: File, onProgress: (Int) -> Unit = {}): Unit =
         BufferedInputStream(source.inputStream()).use { extractTar(it, onProgress) }
@@ -360,7 +531,8 @@ class DistroManager(
                 if (entryCount % 200 == 0) onProgress(entryCount / 40)
                 val name = entry.name.replace('\\', '/').removePrefix("./")
                 if (name.isBlank()) continue
-                val target = File(root, name)
+                val stripped = stripComponents(name, stripCount) ?: continue
+                val target = File(root, stripped)
                 if (!target.canonicalPath.startsWith(root.canonicalPath + File.separator) &&
                     target.canonicalPath != root.canonicalPath
                 ) {
@@ -448,6 +620,68 @@ class DistroManager(
     // ----------------------------------------------------------------- command
 
     /**
+     * Folder bin di dalam guest.
+     *
+     * Layout Termux menaruh semua binary di `$PREFIX/bin`; distro biasa
+     * memakai `/usr/bin` (atau `/bin` untuk distro non-merged-usr).
+     */
+    private fun guestBinDir(): String = when {
+        spec.extractDir.isNotEmpty() -> "${spec.guestPrefix}/bin"
+        else -> "/usr/bin"
+    }
+
+    /** Path absolut di dalam guest untuk binary bernama [name], null kalau tidak ada. */
+    fun guestBinary(name: String): String? {
+        val candidates = when {
+            spec.extractDir.isNotEmpty() -> listOf("${spec.guestPrefix}/bin/$name", "/usr/bin/$name", "/bin/$name")
+            else -> listOf("/usr/bin/$name", "/bin/$name")
+        }
+        return candidates.firstOrNull { File(rootfsDir, it.trimStart('/')).exists() }
+    }
+
+    /** PATH di dalam guest (bin distro didahulukan). */
+    fun guestPathValue(): String {
+        val bin = guestBinDir()
+        val base = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        return if (bin == "/usr/bin") base else "$bin:$base"
+    }
+
+    /** Path `env` di dalam guest — dipakai untuk membersihkan environment. */
+    fun guestEnvPath(): String = guestBinary("env") ?: "${guestBinDir()}/env"
+
+    /** Path shell di dalam guest. */
+    fun guestShellPath(): String =
+        guestBinary("sh") ?: guestBinary("bash") ?: "${guestBinDir()}/sh"
+
+    /** Path HOME di dalam guest (Termux memakai `$PREFIX/home`). */
+    fun guestHomePath(): String =
+        if (spec.extractDir.isNotEmpty()) "${spec.guestPrefix}/home" else "/root"
+
+    /**
+     * Argumen `-b` tambahan yang dibutuhkan distro tertentu.
+     *
+     * Termux memakai bionic Android: binary-nya butuh `/system` (linker64) dan
+     * `/apex` (pustaka runtime). Hanya di-bind kalau path-nya memang ada.
+     */
+    fun extraBindArgs(): List<String> = buildList {
+        spec.extraBinds.forEach { path ->
+            if (File(path).exists()) add("-b"); add(path)
+        }
+    }
+
+    /** Env tambahan khas distro (PREFIX/TERMUX_PREFIX untuk Termux). */
+    fun guestExtraEnv(): Map<String, String> =
+        if (spec.extractDir.isEmpty()) {
+            emptyMap()
+        } else {
+            mapOf(
+                "PREFIX" to spec.guestPrefix,
+                "TERMUX_PREFIX" to spec.guestPrefix,
+                "TMPDIR" to "${spec.guestPrefix}/tmp",
+            )
+        }
+
+    /**
      * Rangkaian argv untuk menjalankan [command] di dalam distro.
      * Mengembalikan null kalau prasyarat (proot + rootfs) belum siap.
      *
@@ -470,7 +704,7 @@ class DistroManager(
         val workdir = if (bindWorkspace && sessionWorkspaceDir != null) {
             "/root/workspace/sessions/${sessionWorkspaceDir.name}"
         } else {
-            "/root"
+            guestHomePath()
         }
 
         val argv = mutableListOf(
@@ -484,21 +718,27 @@ class DistroManager(
             "-b", "/sys",
             "-b", rootfsDir.absolutePath + "/tmp:/dev/shm",
         )
+        // Termux memakai bionic Android: binary-nya butuh /system (linker64)
+        // dan /apex (pustaka runtime). Hanya di-bind kalau memang ada.
+        argv += extraBindArgs()
         if (bindWorkspace && pw != null) {
             argv += listOf("-b", "${pw.absolutePath}:/root/workspace")
         }
         argv += listOf(
-            "/usr/bin/env",
+            guestEnvPath(),
             "-i",
-            "HOME=/root",
-            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "HOME=${guestHomePath()}",
+            "PATH=${guestPathValue()}",
             "TERM=xterm-256color",
             "LANG=C.UTF-8",
             "PROOT_LOADER=${loader.absolutePath}",
             "PROOT_TMP_DIR=${tmpDir.absolutePath}",
         )
         if (settings.prootNoSeccomp) argv += "PROOT_NO_SECCOMP=1"
-        argv += listOf("/bin/sh", "-c", command)
+        // Layout Termux: binary-nya cari prefix lewat env ini (RUNPATH-nya
+        // absolut ke /data/data/com.termux/files/usr).
+        argv += guestExtraEnv().map { (k, v) -> "$k=$v" }
+        argv += listOf(guestShellPath(), "-c", command)
         return argv
     }
 

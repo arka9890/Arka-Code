@@ -81,6 +81,18 @@ fun DistroScreen(
     var progressLabel by remember { mutableStateOf("") }
     var message by remember { mutableStateOf<String?>(null) }
 
+    /** ABI perangkat — menentukan rootfs mana yang tersedia. */
+    val deviceAbi = remember {
+        android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"
+    }
+
+    /** Nama kelompok distro yang sudah diterjemahkan. */
+    fun groupLabel(group: String): String = when (group) {
+        "Lain-lain" -> I18n.s.distroGroupOther
+        "Kustom" -> I18n.s.distroGroupCustom
+        else -> group
+    }
+
     /** Status terpasang per distro — dicek cepat per folder, tanpa hitung ukuran rootfs. */
     fun refresh() {
         scope.launch {
@@ -238,90 +250,107 @@ fun DistroScreen(
 
                 // --- Distro ----------------------------------------------------
                 if (runtime == RuntimeMode.PROOT) {
-                    DistroCatalog.ALL.forEach { spec ->
-                        val isActive = spec.id == distroId
-                        val isInstalled = spec.id in installedIds
-                        ClayCard(modifier = Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        spec.label,
-                                        fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                    )
-                                    if (isActive) {
-                                        Spacer(Modifier.width(6.dp))
-                                        Icon(
-                                            Icons.Default.Check,
-                                            contentDescription = I18n.s.distroActive,
-                                            modifier = Modifier.width(16.dp),
+                    DistroCatalog.grouped().forEach { (group, items) ->
+                        Text(
+                            groupLabel(group),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
+                        items.forEach { spec ->
+                            val isActive = spec.id == distroId
+                            val isInstalled = spec.id in installedIds
+                            val supported = spec.supports(deviceAbi)
+                            ClayCard(modifier = Modifier.fillMaxWidth()) {
+                                Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            spec.label,
+                                            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                        )
+                                        if (isActive) {
+                                            Spacer(Modifier.width(6.dp))
+                                            Icon(
+                                                Icons.Default.Check,
+                                                contentDescription = I18n.s.distroActive,
+                                                modifier = Modifier.width(16.dp),
+                                            )
+                                        }
+                                        Spacer(Modifier.weight(1f))
+                                        Text(
+                                            if (isInstalled) I18n.s.distroInstalled else I18n.s.distroNotInstalled,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
                                     }
-                                    Spacer(Modifier.weight(1f))
                                     Text(
-                                        if (isInstalled) I18n.s.distroInstalled else I18n.s.distroNotInstalled,
+                                        spec.summary,
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
-                                }
-                                Text(
-                                    spec.summary,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text(
-                                        "${I18n.s.distroPackageManager}: ${spec.packageManager}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    if (spec.approxSizeMb > 0) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                         Text(
-                                            "· ${I18n.s.distroSize}: ~${spec.approxSizeMb} MB",
+                                            "${I18n.s.distroPackageManager}: ${spec.packageManager}",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
+                                        if (spec.approxSizeMb > 0) {
+                                            Text(
+                                                "· ${I18n.s.distroSize}: ~${spec.approxSizeMb} MB",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                        sizes[spec.id]?.let {
+                                            Text(
+                                                "· $it",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
                                     }
-                                    sizes[spec.id]?.let {
+                                    if (!supported) {
                                         Text(
-                                            "· $it",
+                                            I18n.s.distroNotAvailable,
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            color = MaterialTheme.colorScheme.error,
                                         )
                                     }
-                                }
 
-                                if (spec.custom) {
-                                    OutlinedTextField(
-                                        value = customUrl,
-                                        onValueChange = { customUrl = it },
-                                        label = { Text(I18n.s.distroCustomUrl) },
-                                        placeholder = { Text(I18n.s.distroCustomUrlHint) },
-                                        singleLine = true,
-                                        modifier = Modifier.fillMaxWidth(),
-                                    )
-                                }
+                                    if (spec.custom) {
+                                        OutlinedTextField(
+                                            value = customUrl,
+                                            onValueChange = { customUrl = it },
+                                            label = { Text(I18n.s.distroCustomUrl) },
+                                            placeholder = { Text(I18n.s.distroCustomUrlHint) },
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+                                    }
 
-                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    TextButton(
-                                        onClick = { selectDistro(spec) },
-                                        enabled = !isActive,
-                                    ) { Text(I18n.s.distroActive) }
-                                    TextButton(
-                                        onClick = { install(spec) },
-                                        enabled = !busy && prootReady && (!spec.custom || customUrl.isNotBlank()),
-                                    ) { Text(I18n.s.distroInstall) }
-                                    if (isInstalled) {
-                                        TextButton(onClick = {
-                                            busy = true
-                                            scope.launch {
-                                                withContext(Dispatchers.IO) {
-                                                    DistroManager(context, spec).remove()
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        TextButton(
+                                            onClick = { selectDistro(spec) },
+                                            enabled = !isActive && supported,
+                                        ) { Text(I18n.s.distroActive) }
+                                        TextButton(
+                                            onClick = { install(spec) },
+                                            enabled = !busy && prootReady && supported &&
+                                                (!spec.custom || customUrl.isNotBlank()),
+                                        ) { Text(I18n.s.distroInstall) }
+                                        if (isInstalled) {
+                                            TextButton(onClick = {
+                                                busy = true
+                                                scope.launch {
+                                                    withContext(Dispatchers.IO) {
+                                                        DistroManager(context, spec).remove()
+                                                    }
+                                                    busy = false
+                                                    refresh()
                                                 }
-                                                busy = false
-                                                refresh()
-                                            }
-                                        }) { Text(I18n.s.distroRemove) }
+                                            }) { Text(I18n.s.distroRemove) }
+                                        }
                                     }
                                 }
                             }
