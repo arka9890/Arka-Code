@@ -27,3 +27,26 @@ object UploadText {
         AppLang.EN -> "Failed to upload $name: $why"
     }
 }
+
+/** String untuk tombol ekspor ZIP di panel Files. */
+object ExportText {
+
+    /** Deskripsi ikon tombol. */
+    val pick: String get() = when (I18n.lang) {
+        AppLang.ID -> "Bundel folder ini jadi ZIP"
+        AppLang.EN -> "Bundle this folder as ZIP"
+    }
+
+    fun zipName(cwd: String): String =
+        (cwd.substringAfterLast('/').ifBlank { "workspace" }) + ".zip"
+
+    fun done(count: Int): String = when (I18n.lang) {
+        AppLang.ID -> if (count == 1) "ZIP dibuat (1 berkas)" else "ZIP dibuat ($count berkas)"
+        AppLang.EN -> if (count == 1) "ZIP created (1 file)" else "ZIP created ($count files)"
+    }
+
+    fun failed(why: String): String = when (I18n.lang) {
+        AppLang.ID -> "Gagal membuat ZIP: $why"
+        AppLang.EN -> "Failed to create ZIP: $why"
+    }
+}

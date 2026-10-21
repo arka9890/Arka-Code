@@ -25,6 +25,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.Card
@@ -53,6 +54,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.arkacode.app.core.fileLeafName
+import com.arkacode.app.core.WorkspaceExport
 import com.arkacode.app.core.WorkspaceImport
 import com.arkacode.app.net.FsEntry
 import com.arkacode.app.net.OpenCodeClient
@@ -176,6 +178,25 @@ fun FilesPane(port: Int, password: String, modifier: Modifier = Modifier) {
         }
     }
 
+    val pickExportZip = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                WorkspaceExport.exportFolder(port, password, cwd, ExportText.zipName(cwd), uri)
+            }.onSuccess { count ->
+                Toast.makeText(filesContext, ExportText.done(count), Toast.LENGTH_LONG).show()
+            }.onFailure {
+                Toast.makeText(
+                    filesContext,
+                    ExportText.failed(it.message ?: "?"),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
     Surface(color = MaterialTheme.colorScheme.surface) {
         Column(Modifier.fillMaxWidth()) {
             Row(
@@ -205,6 +226,12 @@ fun FilesPane(port: Int, password: String, modifier: Modifier = Modifier) {
                         Icon(
                             Icons.Default.Upload,
                             contentDescription = UploadText.pick,
+                        )
+                    }
+                    IconButton(onClick = { pickExportZip.launch(ExportText.zipName(cwd)) }) {
+                        Icon(
+                            Icons.Default.Save,
+                            contentDescription = ExportText.pick,
                         )
                     }
                 }

@@ -33,8 +33,10 @@ android {
         minSdk = 26
         targetSdk = 35
         // Naik tiap build CI (GITHUB_RUN_NUMBER) → update dikenali sistem.
-        versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
-        versionName = "0.2.0"
+        // versionCode epoch-menit: monoton naik & unik walau CI-nya GHA / Woodpecker /
+        // build lokal, supaya HP tak pernah menolak upgrade karena code tidak berubah.
+        versionCode = (System.currentTimeMillis() / 60000).toInt()
+        versionName = "0.2.1"
     }
 
     signingConfigs {
