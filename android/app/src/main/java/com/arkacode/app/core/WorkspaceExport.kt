@@ -1,9 +1,11 @@
 package com.arkacode.app.core
 
+import android.content.Context
 import android.net.Uri
 import com.arkacode.app.net.OpenCodeClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.IOException
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -24,6 +26,7 @@ object WorkspaceExport {
      * @return jumlah berkas yang dimasukkan ke ZIP.
      */
     suspend fun exportFolder(
+        context: Context,
         port: Int,
         password: String,
         cwd: String,
@@ -34,7 +37,7 @@ object WorkspaceExport {
         val leaf = zipName.substringAfterLast('/')
         val stack = ArrayDeque(listOf(cwd))
         var count = 0
-        out.openOutputStream()?.use { raw ->
+        context.contentResolver.openOutputStream(out)?.use { raw ->
             ZipOutputStream(raw.buffered(64 * 1024)).use { zip ->
                 while (stack.isNotEmpty()) {
                     val dir = stack.removeFirst()

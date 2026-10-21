@@ -184,7 +184,7 @@ fun FilesPane(port: Int, password: String, modifier: Modifier = Modifier) {
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
             runCatching {
-                WorkspaceExport.exportFolder(port, password, cwd, ExportText.zipName(cwd), uri)
+                WorkspaceExport.exportFolder(filesContext, port, password, cwd, ExportText.zipName(cwd), uri)
             }.onSuccess { count ->
                 Toast.makeText(filesContext, ExportText.done(count), Toast.LENGTH_LONG).show()
             }.onFailure {
