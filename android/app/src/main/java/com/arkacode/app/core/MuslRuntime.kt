@@ -266,7 +266,7 @@ object MuslRuntime {
                     if (n == 0 && (inflater.needsInput() || inflater.needsDictionary())) break
                     out.write(buf, 0, n)
                 }
-                val consumed = inflater.bytesRead
+                val consumed = inflater.bytesRead.toInt()
                 result += out.toByteArray()
                 // +8 = footer gzip (CRC32 + ISIZE)
                 off = p + consumed + 8
