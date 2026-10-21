@@ -242,6 +242,12 @@ data class Strings(
     val distroNotAvailable: String,
     val distroGroupOther: String,
     val distroGroupCustom: String,
+    val distroReinstall: String,
+    val distroDownloading: String,
+    val distroNotInstalledYet: String,
+    val distroInstallCancelled: String,
+    val distroInstallBusy: String,
+    val distroRestartHint: String,
 )
 
 private val id = Strings(
@@ -461,6 +467,12 @@ private val id = Strings(
     distroNotAvailable = "Tidak tersedia untuk arsitektur perangkat ini.",
     distroGroupOther = "Lain-lain",
     distroGroupCustom = "Kustom",
+    distroReinstall = "Unduh ulang",
+    distroDownloading = "Mengunduh rootfs…",
+    distroNotInstalledYet = "Belum terpasang — mengunduh dulu.",
+    distroInstallCancelled = "Unduhan dibatalkan.",
+    distroInstallBusy = "Sudah ada unduhan lain yang jalan.",
+    distroRestartHint = "Restart server (Stop lalu jalankan lagi) untuk menerapkan distro baru.",
 )
 
 private val en = Strings(
@@ -680,6 +692,12 @@ private val en = Strings(
     distroNotAvailable = "Not available for this device architecture.",
     distroGroupOther = "Others",
     distroGroupCustom = "Custom",
+    distroReinstall = "Re-download",
+    distroDownloading = "Downloading rootfs…",
+    distroNotInstalledYet = "Not installed yet — downloading it first.",
+    distroInstallCancelled = "Download cancelled.",
+    distroInstallBusy = "Another download is already running.",
+    distroRestartHint = "Restart the server (Stop, then start again) to apply the new distro.",
 )
 
 /** Registry bahasa global (state Compose → recompose otomatis saat diganti). */

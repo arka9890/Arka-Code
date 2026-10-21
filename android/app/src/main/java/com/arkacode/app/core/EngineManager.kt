@@ -464,16 +464,27 @@ class EngineManager(private val context: Context) {
     fun distroStatus(): DistroStatus = distro.status()
 
     /**
-     * Pasang rootfs distro yang sedang dipilih.
+     * Pasang rootfs distro yang dipilih.
+     *
+     * [spec] menentukan distro YANG DIUNDUH. Kalau tidak diisi, distro aktif
+     * yang dipakai. Penting: instalasi harusnya tidak mengubah distro aktif —
+     * kalau belum sukses, distro aktif tidak boleh menunjuk rootfs yang
+     * belum ada.
      *
      * [customRootfsUrl] dipakai untuk distro "custom" — URL rootfs milik user
      * (Debian/Ubuntu/apa pun). Kalau kosong, distro custom harus dipasang
      * dari berkas lokal (Settings → Files → Impor).
      */
     suspend fun setupDistro(
+        spec: DistroSpec = distroSpec,
         customRootfsUrl: String? = null,
         onProgress: (Int, String) -> Unit = { _, _ -> },
-    ): Result<Unit> = distro.install(customRootfsUrl, onProgress)
+    ): Result<Unit> {
+        // Pakai instance khusus supaya folder yang ditimpa Pasti folder
+        // distro yang diminta — bukan folder distro yang sedang aktif.
+        val target = if (spec.id == distroSpec.id) distro else DistroManager(context, spec)
+        return target.install(customRootfsUrl, onProgress)
+    }
 
     /**
      * Jalankan `opencode serve` sebagai proses persisten, lalu tunggu `/api/info`

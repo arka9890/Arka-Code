@@ -146,8 +146,11 @@ class DistroManager(
      * ada di perangkat), sehingga rootfs yang sudah terpasang dianggap belum ada.
      * Ini penyebab bug "sudah di-install tapi tidak terbaca".
      */
-    fun isInstalled(): Boolean =
-        spec.releaseMarkers.any { File(rootfsDir, it).isFile }
+    fun isInstalled(): Boolean = isInstalledIn(rootfsDir)
+
+    /** Cek penanda distro di folder tertentu (dipakai saat ekstraksi staging). */
+    private fun isInstalledIn(dir: File): Boolean =
+        spec.releaseMarkers.any { File(dir, it).isFile }
 
     fun status(): DistroStatus {
         val proot = prootBinary()
@@ -196,9 +199,9 @@ class DistroManager(
         customUrl: String? = null,
         onProgress: (Int, String) -> Unit = { _, _ -> },
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
+        try {
             val custom = customUrl?.trim()?.takeIf { it.isNotEmpty() }
-            var candidates: List<String> = when {
+            val candidates: List<String> = when {
                 custom != null -> listOf(custom)
                 else -> spec.rootfsUrls(abi)
             }.distinct()
@@ -207,7 +210,7 @@ class DistroManager(
             for ((index, url) in candidates.withIndex()) {
                 val outcome = tryInstall(url, index, candidates.size, onProgress)
                 // tryInstall mengembalikan null kalau BERHASIL.
-                if (outcome == null) return@runCatching
+                if (outcome == null) return@withContext Result.success(Unit)
                 lastError = outcome
             }
 
@@ -216,12 +219,18 @@ class DistroManager(
                 val fresh = spec.resolveLatestUrls(abi)
                 for ((index, url) in fresh.withIndex()) {
                     val outcome = tryInstall(url, index, fresh.size, onProgress)
-                    if (outcome == null) return@runCatching
+                    if (outcome == null) return@withContext Result.success(Unit)
                     lastError = outcome
                 }
             }
 
-            throw lastError ?: IllegalStateException("Unduhan rootfs gagal")
+            Result.failure(lastError ?: IllegalStateException("Unduhan rootfs gagal"))
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // Jangan ditelan: kalau tidak, tombol "Batal" tidak bisa
+            // menghentikan unduhan yang sedang jalan.
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
 
@@ -248,18 +257,37 @@ class DistroManager(
                 onProgress(percent / 2, label)
             }
             onProgress(52, "Mengekstrak rootfs…")
-            // Bersihkan sisa instalasi sebelumnya supaya tidak campur.
-            rootfsDir.deleteRecursively()
-            rootfsDir.mkdirs()
-            extractArchive(tmpArchive) { percent -> onProgress(52 + percent / 2, "Mengekstrak rootfs… $percent%") }
-            tmpArchive.delete()
-            check(isInstalled()) {
-                "Ekstraksi selesai tapi penanda distro (${spec.releaseMarkers.firstOrNull() ?: "os-release"}) tidak ada — arsip bukan rootfs ${spec.label}."
+
+            // Ekstrak ke folder STAGING dulu. Rootfs lama (kalau ada) tetap
+            // utuh sampai ekstraksi baru benar-benar berhasil — jadi unduhan
+            // yang gagal tidak meremukkan distro yang sedang dipakai.
+            val staging = File(distroRoot, ".staging-${spec.folderName}")
+            staging.deleteRecursively()
+            staging.mkdirs()
+            try {
+                extractArchive(tmpArchive, staging) { percent ->
+                    onProgress(52 + percent / 2, "Mengekstrak rootfs… $percent%")
+                }
+                check(isInstalledIn(staging)) {
+                    "Ekstraksi selesai tapi penanda distro (${spec.releaseMarkers.firstOrNull() ?: "os-release"}) tidak ada — arsip bukan rootfs ${spec.label}."
+                }
+                // Tukar: hapus yang lama, pindahkan yang baru ke tempatnya.
+                rootfsDir.deleteRecursively()
+                if (!staging.renameTo(rootfsDir)) {
+                    staging.copyRecursively(rootfsDir, overwrite = true)
+                    staging.deleteRecursively()
+                }
+            } finally {
+                runCatching { staging.deleteRecursively() }
             }
+
+            tmpArchive.delete()
             onProgress(97, "Menyiapkan /root/workspace & resolv.conf…")
             postInstall()
             onProgress(100, "${spec.label} terpasang.")
             null
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e // dibatalkan user -> jangan dianggap kegagalan biasa
         } catch (e: Exception) {
             e
         }
@@ -280,16 +308,33 @@ class DistroManager(
     /** Pasang dari file .tar.gz/.tar.xz/.zip lokal hasil SAF (opsi offline). */
     suspend fun installFromStream(input: InputStream, onProgress: (Int, String) -> Unit = { _, _ -> }): Result<Unit> =
         withContext(Dispatchers.IO) {
-            runCatching {
+            try {
                 onProgress(5, "Menyiapkan…")
-                rootfsDir.deleteRecursively()
-                rootfsDir.mkdirs()
-                extractArchive(input) { percent -> onProgress(5 + percent * 9 / 10, "Mengekstrak rootfs… $percent%") }
-                check(isInstalled()) {
-                    "Arsip bukan rootfs yang dikenal (penanda ${spec.releaseMarkers.firstOrNull() ?: "os-release"} tidak ditemukan)."
+                val staging = File(distroRoot, ".staging-${spec.folderName}")
+                staging.deleteRecursively()
+                staging.mkdirs()
+                try {
+                    extractArchive(input, staging) { percent ->
+                        onProgress(5 + percent * 9 / 10, "Mengekstrak rootfs… $percent%")
+                    }
+                    check(isInstalledIn(staging)) {
+                        "Arsip bukan rootfs yang dikenal (penanda ${spec.releaseMarkers.firstOrNull() ?: "os-release"} tidak ditemukan)."
+                    }
+                    rootfsDir.deleteRecursively()
+                    if (!staging.renameTo(rootfsDir)) {
+                        staging.copyRecursively(rootfsDir, overwrite = true)
+                        staging.deleteRecursively()
+                    }
+                } finally {
+                    runCatching { staging.deleteRecursively() }
                 }
                 postInstall()
                 onProgress(100, "${spec.label} terpasang dari file lokal.")
+                Result.success(Unit)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Result.failure(e)
             }
         }
 
@@ -340,7 +385,7 @@ class DistroManager(
 
     // ----------------------------------------------------------------- download
 
-    private fun download(
+    private suspend fun download(
         url: String,
         target: File,
         onProgress: (Int, Long, Long) -> Unit,
@@ -362,6 +407,9 @@ class DistroManager(
                 FileOutputStream(target).use { out ->
                     val buf = ByteArray(64 * 1024)
                     while (true) {
+                        // Cek pembatalan — supaya tombol "Batal" langsung
+                        // menghentikan unduhan yang sedang berjalan.
+                        kotlinx.coroutines.currentCoroutineContext().ensureActive()
                         val n = input.read(buf)
                         if (n < 0) break
                         out.write(buf, 0, n)
@@ -385,13 +433,17 @@ class DistroManager(
      * ekstensi (URL bisa tanpa ekstensi).
      *
      * Zip dipakai bootstrap Termux; tar dipakai Alpine/ubuntu-base/proot-distro.
+     *
+     * [targetDir] adalah folder tempat isi arsip diletakkan. Normalnya ini
+     * rootfs distro, tapi saat instalasi dipakai folder staging supaya rootfs
+     * lama tidak ikut terhapus kalau unduhan/ekstraksi gagal.
      */
-    private fun extractArchive(source: File, onProgress: (Int) -> Unit = {}): Unit {
-        BufferedInputStream(source.inputStream()).use { extractArchive(it, onProgress) }
+    private fun extractArchive(source: File, targetDir: File, onProgress: (Int) -> Unit = {}): Unit {
+        BufferedInputStream(source.inputStream()).use { extractArchive(it, targetDir, onProgress) }
     }
 
     /** Ekstraksi dari stream (berkas lokal hasil SAF) — format ditentukan magic bytes. */
-    private fun extractArchive(input: InputStream, onProgress: (Int) -> Unit = {}) {
+    private fun extractArchive(input: InputStream, targetDir: File, onProgress: (Int) -> Unit = {}) {
         val head = ByteArray(4)
         var read = 0
         val buffered = BufferedInputStream(input)
@@ -402,8 +454,8 @@ class DistroManager(
         }
         val replay = java.io.SequenceInputStream(java.io.ByteArrayInputStream(head.copyOf(read)), buffered)
         val isZip = read >= 2 && head[0] == 'P'.code.toByte() && head[1] == 'K'.code.toByte()
-        if (isZip) extractZip(replay, onProgress)
-        else extractTar(replay, onProgress)
+        if (isZip) extractZip(replay, targetDir, onProgress)
+        else extractTar(replay, targetDir, onProgress)
     }
 
     /**
@@ -416,10 +468,10 @@ class DistroManager(
      *     berkas `SYMLINKS.txt` dengan format `target←linkpath`.
      *     Contoh: `dash←./bin/sh` berarti symlink `bin/sh` → `dash`.
      */
-    private fun extractZip(input: InputStream, onProgress: (Int) -> Unit = {}) {
-        val baseDir = if (spec.extractDir.isEmpty()) rootfsDir else File(rootfsDir, spec.extractDir)
+    private fun extractZip(input: InputStream, targetDir: File, onProgress: (Int) -> Unit = {}) {
+        val baseDir = if (spec.extractDir.isEmpty()) targetDir else File(targetDir, spec.extractDir)
         baseDir.mkdirs()
-        val root = rootfsDir.canonicalFile
+        val root = targetDir.canonicalFile
         var symlinkManifest: String? = null
         var count = 0
         java.util.zip.ZipInputStream(input).use { zip ->
@@ -446,7 +498,7 @@ class DistroManager(
                 if (count % 200 == 0) onProgress((count / 40).coerceAtMost(100))
             }
         }
-        symlinkManifest?.let { applySymlinkManifest(it, baseDir) }
+        symlinkManifest?.let { applySymlinkManifest(it, root, baseDir) }
     }
 
     /**
@@ -460,18 +512,18 @@ class DistroManager(
      *    beberapa entri lisensi menulisnya relatif terhadap prefix. Jadi
      *    keduanya dicoba.
      */
-    private fun applySymlinkManifest(manifest: String, baseDir: File) {
+    private fun applySymlinkManifest(manifest: String, root: File, baseDir: File) {
         manifest.lineSequence().forEach { line ->
             val parts = line.split('←')
             if (parts.size != 2) return@forEach
             val target = parts[0].trim()
             val linkPath = parts[1].trim()
             if (target.isEmpty() || linkPath.isEmpty()) return@forEach
-            val link = resolveGuestPath(baseDir, linkPath) ?: return@forEach
+            val link = resolveGuestPath(root, baseDir, linkPath) ?: return@forEach
             val linkDir = link.parentFile ?: return@forEach
             // Target harus benar-benar ada, kalau tidak symlink jadi sia-sia.
-            val resolved = resolveGuestPath(linkDir, target)
-                ?: resolveGuestPath(baseDir, target)
+            val resolved = resolveGuestPath(root, linkDir, target)
+                ?: resolveGuestPath(root, baseDir, target)
                 ?: return@forEach
             if (!resolved.exists()) return@forEach
             runCatching {
@@ -488,20 +540,22 @@ class DistroManager(
      * Path absolut yang diawali prefix distro (mis. `/data/data/com.termux/files/usr`)
      * dipetakan ke folder prefix di dalam rootfs; path absolut lain dipetakan
      * ke rootfs. Path relatif dihitung relatif terhadap [base].
+     *
+     * [root] = batas akar ekstraksi (rootfs atau folder staging).
      */
-    private fun resolveGuestPath(base: File, path: String): File? {
+    private fun resolveGuestPath(root: File, base: File, path: String): File? {
         val norm = path.replace('\\', '/')
-        val root = runCatching { rootfsDir.canonicalFile }.getOrNull() ?: return null
+        val rootCanon = runCatching { root.canonicalFile }.getOrNull() ?: return null
         val prefix = spec.guestPrefix
         val candidate = when {
             !norm.startsWith("/") -> File(base, norm)
             prefix.isNotEmpty() && (norm == prefix || norm.startsWith("$prefix/")) ->
                 File(base, norm.removePrefix(prefix).trimStart('/'))
-            prefix.isEmpty() -> File(root, norm.trimStart('/'))
+            prefix.isEmpty() -> File(rootCanon, norm.trimStart('/'))
             else -> return null // di luar prefix distro -> jangan sentuh
         }
         val canonical = runCatching { candidate.canonicalFile }.getOrNull() ?: return null
-        if (!canonical.path.startsWith(root.path + File.separator)) return null
+        if (!canonical.path.startsWith(rootCanon.path + File.separator)) return null
         return canonical
     }
 
@@ -517,11 +571,11 @@ class DistroManager(
     }
 
     /** Ekstraksi .tar(.gz/.xz/.zst) aman (menolak path keluar rootfs + menangani symlink/hardlink). */
-    private fun extractTar(source: File, onProgress: (Int) -> Unit = {}): Unit =
-        BufferedInputStream(source.inputStream()).use { extractTar(it, onProgress) }
+    private fun extractTar(source: File, targetDir: File, onProgress: (Int) -> Unit = {}): Unit =
+        BufferedInputStream(source.inputStream()).use { extractTar(it, targetDir, onProgress) }
 
-    private fun extractTar(input: InputStream, onProgress: (Int) -> Unit = {}) {
-        val root = rootfsDir.canonicalFile
+    private fun extractTar(input: InputStream, targetDir: File, onProgress: (Int) -> Unit = {}) {
+        val root = targetDir.canonicalFile
         var buffer = ByteArray(64 * 1024)
         TarArchiveInputStream(decompressor(input)).use { tar ->
             var entryCount = 0

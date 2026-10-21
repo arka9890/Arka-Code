@@ -173,6 +173,16 @@ symlink-nya. Karena binary Termux dibangun untuk bionic Android
 > Berganti distro/runtime butuh **restart server** (Pengaturan → Stop → jalankan
 > lagi), karena proot dan env server sudah ditentukan saat proses start.
 
+Perilaku unduhan rootfs:
+
+- Status unduhan ditampilkan **di kartu distro yang sedang diunduh** — distro
+  lain tetap bisa diklik (tidak ada lagi tombol yang mati semuanya).
+- Tombol **Batal** menghentikan unduhan yang sedang jalan.
+- Rootfs diekstrak ke folder staging lalu ditukar saat berhasil, jadi distro
+  yang sedang dipakai tidak rusak kalau unduhan gagal.
+- Gagal unduhan ditampilkan di kartu distro itu; distro aktif baru berpindah
+  setelah instalasi sukses.
+
 ### Update di tempat (tanpa uninstall)
 
 Semua APK dari CI ditandatangani dengan **keystore bersama** yang ikut di repo

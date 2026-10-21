@@ -76,10 +76,27 @@ fun DistroScreen(
     var sizes by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var prootReady by remember { mutableStateOf(true) }
     var termuxStatus by remember { mutableStateOf(TermuxBridge.Status(false, false, "")) }
-    var busy by remember { mutableStateOf(false) }
     var progress by remember { mutableStateOf(0) }
     var progressLabel by remember { mutableStateOf("") }
     var message by remember { mutableStateOf<String?>(null) }
+
+    /**
+     * Id distro yang SEDANG diunduh — bukan flag global.
+     *
+     * Dulu ada satu `busy` untuk semua distro, jadi begitu satu distro
+     * diunduh, tombol "Unduh & pasang" di SEMUA distro ikut mati dan user
+     * merasa aplikasinya hang. Sekarang hanya kartu distro yang sedang
+     * dikerjakan yang nonaktif; sisanya tetap bisa dipakai.
+     */
+    var installingId by remember { mutableStateOf<String?>(null) }
+    /** Job unduhan yang sedang jalan — dipakai tombol "Batal". */
+    var installJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    /** Pesan error per distro (ditampilkan di kartunya, bukan di atas). */
+    var installErrors by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    /** Id distro yang sedang dihapus. */
+    var removingId by remember { mutableStateOf<String?>(null) }
+    /** Token++; incremented tiap unduhan baru (mencegah state lama menimpa baru). */
+    var installToken by remember { mutableStateOf(0) }
 
     /** ABI perangkat — menentukan rootfs mana yang tersedia. */
     val deviceAbi = remember {
@@ -135,7 +152,21 @@ fun DistroScreen(
         onRuntimeChanged()
     }
 
+    /**
+     * Jadikan distro ini distro aktif.
+     *
+     * Kalau distro belum terpasang, JANGAN langsung dipindah — user bisa
+     *YPT memilih distro yang rootfs-nya belum ada lalu diam-diam memicu
+     * unduhan 150 MB. Jadi distro yang belum terpasang cukup memicu unduhan;
+     * perpindahan ke "aktif" baru terjadi setelah unduhan sukses.
+     */
     fun selectDistro(spec: DistroSpec) {
+        if (spec.id !in installedIds) {
+            install(spec)
+            // install() sudah menandai distro ini sebagai sedang diunduh.
+            if (installingId == spec.id) message = I18n.s.distroNotInstalledYet
+            return
+        }
         distroId = spec.id
         engine.setDistro(spec)
         scope.launch {
@@ -147,27 +178,90 @@ fun DistroScreen(
         onRuntimeChanged()
     }
 
+    /**
+     * Unduh & pasang rootfs distro.
+     *
+     * Per distro: kartu lain tetap interaktif. Error ditampilkan di kartu
+     * distro yang gagal, dan unduhan bisa dibatalkan.
+     */
     fun install(spec: DistroSpec) {
-        busy = true
-        progress = 0
-        message = null
-        scope.launch {
-            val specToInstall = spec
-            engine.setDistro(specToInstall)
-            val result = engine.setupDistro(
-                customRootfsUrl = if (specToInstall.custom) customUrl.ifBlank { null } else null,
-            ) { p, label ->
-                scope.launch {
-                    progress = p
-                    progressLabel = label
-                }
-            }
-            busy = false
-            progress = 0
-            message = result.exceptionOrNull()?.message
-                ?: "${specToInstall.label} siap."
-            refresh()
+        if (installingId != null) {
+            message = I18n.s.distroInstallBusy
+            return // sedang ada unduhan lain
         }
+        if (!spec.supports(deviceAbi)) {
+            installErrors = installErrors + (spec.id to I18n.s.distroNotAvailable)
+            return
+        }
+        if (!prootReady) {
+            installErrors = installErrors + (spec.id to I18n.s.distroProotMissing)
+            return
+        }
+        installingId = spec.id
+        progress = 0
+        progressLabel = ""
+        installErrors = installErrors - spec.id
+        message = null
+        // Token supaya hasil unduhan lama tidak menimpa state unduhan baru
+        // (mis. user menekan Batal lalu langsung mengunduh lagi).
+        val token = installToken + 1
+        installToken = token
+
+        installJob = scope.launch {
+            val specToInstall = spec
+            try {
+                // Penting: teruskan spec-nya. Kalau tidak, rootfs yang
+                // diunduh bisa masuk ke folder distro yang sedang aktif.
+                val result = engine.setupDistro(
+                    spec = specToInstall,
+                    customRootfsUrl = if (specToInstall.custom) customUrl.ifBlank { null } else null,
+                ) { p, label ->
+                    // Callback-nya dipanggil dari thread IO (unduhan),
+                    // sedangkan state Compose hanya boleh ditulis dari main
+                    // thread — jadi lompat ke scope (dispatcher main).
+                    scope.launch {
+                        progress = p
+                        progressLabel = label
+                    }
+                }
+                val error = result.exceptionOrNull()
+                if (error != null) {
+                    installErrors = installErrors + (specToInstall.id to (error.message ?: "Gagal memasang distro."))
+                } else {
+                    // Baru pindah ke distro ini kalau instalasi BERHASIL —
+                    // kalau gagal, distro aktif tidak boleh menunjuk rootfs
+                    // yang tidak ada.
+                    distroId = specToInstall.id
+                    engine.setDistro(specToInstall)
+                    withContext(Dispatchers.IO) {
+                        runCatching { uiPrefs.setDistroId(specToInstall.id) }
+                    }
+                    message = "${specToInstall.label} siap. ${I18n.s.distroRestartHint}"
+                    onRuntimeChanged()
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                if (installToken == token) message = I18n.s.distroInstallCancelled
+            } finally {
+                if (installToken == token) {
+                    installingId = null
+                    installJob = null
+                    progress = 0
+                    progressLabel = ""
+                }
+                refresh()
+            }
+        }
+    }
+
+    /** Batalkan unduhan yang sedang jalan. */
+    fun cancelInstall() {
+        installToken = installToken + 1 // invalidasi hasil unduhan lama
+        installJob?.cancel()
+        installJob = null
+        installingId = null
+        progress = 0
+        progressLabel = ""
+        message = I18n.s.distroInstallCancelled
     }
 
     Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
@@ -261,6 +355,9 @@ fun DistroScreen(
                             val isActive = spec.id == distroId
                             val isInstalled = spec.id in installedIds
                             val supported = spec.supports(deviceAbi)
+                            val isInstalling = spec.id == installingId
+                            val isRemoving = spec.id == removingId
+                            val error = installErrors[spec.id]
                             ClayCard(modifier = Modifier.fillMaxWidth()) {
                                 Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -325,50 +422,80 @@ fun DistroScreen(
                                             label = { Text(I18n.s.distroCustomUrl) },
                                             placeholder = { Text(I18n.s.distroCustomUrlHint) },
                                             singleLine = true,
+                                            enabled = !isInstalling,
                                             modifier = Modifier.fillMaxWidth(),
                                         )
+                                    }
+
+                                    // Error unduhan distro ini (bukan global).
+                                    error?.let {
+                                        Text(
+                                            it,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.error,
+                                        )
+                                    }
+
+                                    // Progres unduHAN INLINE di kartu distro ini,
+                                    // jadi user langsung tahu apa yang sedang
+                                    // diunduh tanpa harus scroll ke bawah.
+                                    if (isInstalling) {
+                                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                CircularProgressIndicator(modifier = Modifier.width(16.dp))
+                                                Spacer(Modifier.width(8.dp))
+                                                Text(
+                                                    progressLabel.ifBlank { I18n.s.distroDownloading },
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                )
+                                            }
+                                            LinearProgressIndicator(
+                                                progress = { progress / 100f },
+                                                modifier = Modifier.fillMaxWidth(),
+                                            )
+                                        }
                                     }
 
                                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                         TextButton(
                                             onClick = { selectDistro(spec) },
-                                            enabled = !isActive && supported,
+                                            enabled = !isActive && supported && isInstalled && !isInstalling,
                                         ) { Text(I18n.s.distroActive) }
-                                        TextButton(
-                                            onClick = { install(spec) },
-                                            enabled = !busy && prootReady && supported &&
-                                                (!spec.custom || customUrl.isNotBlank()),
-                                        ) { Text(I18n.s.distroInstall) }
-                                        if (isInstalled) {
-                                            TextButton(onClick = {
-                                                busy = true
-                                                scope.launch {
-                                                    withContext(Dispatchers.IO) {
-                                                        DistroManager(context, spec).remove()
+                                        if (isInstalling) {
+                                            TextButton(onClick = { cancelInstall() }) {
+                                                Text(I18n.s.cancel)
+                                            }
+                                        } else if (isInstalled) {
+                                            // Sudah terpasang: tombol install
+                                            // disembunyikan supaya rootfs yang
+                                            // working tidak terhapus tak sengaja.
+                                            // Kalau mau diperbarui, hapus dulu.
+                                            TextButton(
+                                                onClick = { install(spec) },
+                                                enabled = prootReady && supported,
+                                            ) { Text(I18n.s.distroReinstall) }
+                                            TextButton(
+                                                onClick = {
+                                                    removingId = spec.id
+                                                    scope.launch {
+                                                        withContext(Dispatchers.IO) {
+                                                            DistroManager(context, spec).remove()
+                                                        }
+                                                        removingId = null
+                                                        refresh()
                                                     }
-                                                    busy = false
-                                                    refresh()
-                                                }
-                                            }) { Text(I18n.s.distroRemove) }
+                                                },
+                                                enabled = !isRemoving,
+                                            ) { Text(I18n.s.distroRemove) }
+                                        } else {
+                                            TextButton(
+                                                onClick = { install(spec) },
+                                                enabled = prootReady && supported &&
+                                                    (!spec.custom || customUrl.isNotBlank()),
+                                            ) { Text(I18n.s.distroInstall) }
                                         }
                                     }
                                 }
-                            }
-                        }
-                    }
-
-                    if (busy) {
-                        ClayCard(modifier = Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    CircularProgressIndicator(modifier = Modifier.width(18.dp))
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(progressLabel.ifBlank { "…" }, style = MaterialTheme.typography.bodySmall)
-                                }
-                                LinearProgressIndicator(
-                                    progress = { progress / 100f },
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
                             }
                         }
                     }
