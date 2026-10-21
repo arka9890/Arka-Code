@@ -157,10 +157,16 @@ fun EngineScreen(
                 if (!distro.installed) {
                     log("${distro.distroLabel} belum ada — mengunduh & mengekstrak…")
                     var last = -1
-                    val customUrl = withContext(Dispatchers.IO) {
-                        runCatching { uiPrefs.customRootfsUrl() }.getOrDefault("")
+                    // URL kustom HANYA dipakai untuk distro "custom" — kalau tidak,
+                    // preset akan tertimpa URL lama milik user.
+                    val customUrl = if (engine.distroSpec.custom) {
+                        withContext(Dispatchers.IO) {
+                            runCatching { uiPrefs.customRootfsUrl() }.getOrDefault("")
+                        }.ifBlank { null }
+                    } else {
+                        null
                     }
-                    engine.setupDistro(customRootfsUrl = customUrl.ifBlank { null }) { p, label ->
+                    engine.setupDistro(customRootfsUrl = customUrl) { p, label ->
                         if (p / 10 != last / 10) {
                             last = p
                             scope.launch { log("distro $p% — $label") }

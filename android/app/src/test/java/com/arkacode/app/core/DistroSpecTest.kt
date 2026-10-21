@@ -67,13 +67,23 @@ class DistroSpecTest {
 
     @Test
     fun `setiap distro alpine punya url utama dan mirror fallback`() {
-        DistroCatalog.PRESETS.forEach { spec ->
+        DistroCatalog.PRESETS.filter { it.group == "Alpine" }.forEach { spec ->
             val urls = spec.rootfsUrls("arm64-v8a")
             assertTrue("${spec.id} harus punya >1 kandidat", urls.size > 1)
             assertEquals("${spec.id} kandidat harus unik", urls.size, urls.distinct().size)
             urls.forEach { u ->
                 assertTrue("${spec.id} URL harus https", u.startsWith("https://"))
             }
+        }
+    }
+
+    @Test
+    fun `setiap preset punya minimal satu url rootfs`() {
+        DistroCatalog.PRESETS.forEach { spec ->
+            val urls = spec.rootfsUrls("arm64-v8a")
+            assertTrue("${spec.id} harus punya URL", urls.isNotEmpty())
+            assertTrue("${spec.id} URL harus unik", urls.size == urls.distinct().size)
+            urls.forEach { u -> assertTrue("${spec.id} URL harus https", u.startsWith("https://")) }
         }
     }
 
