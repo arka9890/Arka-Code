@@ -409,7 +409,7 @@ class DistroManager(
                     while (true) {
                         // Cek pembatalan — supaya tombol "Batal" langsung
                         // menghentikan unduhan yang sedang berjalan.
-                        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                        kotlinx.coroutines.ensureActive(kotlinx.coroutines.currentCoroutineContext())
                         val n = input.read(buf)
                         if (n < 0) break
                         out.write(buf, 0, n)

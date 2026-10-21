@@ -153,36 +153,13 @@ fun DistroScreen(
     }
 
     /**
-     * Jadikan distro ini distro aktif.
-     *
-     * Kalau distro belum terpasang, JANGAN langsung dipindah — user bisa
-     *YPT memilih distro yang rootfs-nya belum ada lalu diam-diam memicu
-     * unduhan 150 MB. Jadi distro yang belum terpasang cukup memicu unduhan;
-     * perpindahan ke "aktif" baru terjadi setelah unduhan sukses.
-     */
-    fun selectDistro(spec: DistroSpec) {
-        if (spec.id !in installedIds) {
-            install(spec)
-            // install() sudah menandai distro ini sebagai sedang diunduh.
-            if (installingId == spec.id) message = I18n.s.distroNotInstalledYet
-            return
-        }
-        distroId = spec.id
-        engine.setDistro(spec)
-        scope.launch {
-            withContext(Dispatchers.IO) {
-                runCatching { uiPrefs.setDistroId(spec.id) }
-            }
-        }
-        message = I18n.s.distroSaved
-        onRuntimeChanged()
-    }
-
-    /**
      * Unduh & pasang rootfs distro.
      *
      * Per distro: kartu lain tetap interaktif. Error ditampilkan di kartu
      * distro yang gagal, dan unduhan bisa dibatalkan.
+     *
+     * CATATAN: fungsi lokal Kotlin tidak di-hoist — fungsi ini harus
+     * dideklarasikan SEBELUM dipakai oleh fungsi lain di file ini.
      */
     fun install(spec: DistroSpec) {
         if (installingId != null) {
@@ -262,6 +239,32 @@ fun DistroScreen(
         progress = 0
         progressLabel = ""
         message = I18n.s.distroInstallCancelled
+    }
+
+    /**
+     * Jadikan distro ini distro aktif.
+     *
+     * Kalau distro belum terpasang, JANGAN langsung dipindah — user bisa
+     * memilih distro yang rootfs-nya belum ada lalu diam-diam memicu
+     * unduhan 150 MB. Jadi distro yang belum terpasang cukup memicu unduhan;
+     * perpindahan ke "aktif" baru terjadi setelah unduhan sukses.
+     */
+    fun selectDistro(spec: DistroSpec) {
+        if (spec.id !in installedIds) {
+            install(spec)
+            // install() sudah menandai distro ini sebagai sedang diunduh.
+            if (installingId == spec.id) message = I18n.s.distroNotInstalledYet
+            return
+        }
+        distroId = spec.id
+        engine.setDistro(spec)
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                runCatching { uiPrefs.setDistroId(spec.id) }
+            }
+        }
+        message = I18n.s.distroSaved
+        onRuntimeChanged()
     }
 
     Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
