@@ -403,13 +403,19 @@ class DistroManager(
             val total = conn.contentLengthLong
             var read = 0L
             var lastPercent = -1
+            // Job untuk cek pembatalan — diambil sekali di luar loop.
+            // (pakai Job.isActive supaya tidak bergantung pada API
+            //  ensureActive yang belum ada di semua versi coroutines)
+            val downloadJob = kotlin.coroutines.coroutineContext[kotlinx.coroutines.Job]
             conn.inputStream.use { input ->
                 FileOutputStream(target).use { out ->
                     val buf = ByteArray(64 * 1024)
                     while (true) {
                         // Cek pembatalan — supaya tombol "Batal" langsung
                         // menghentikan unduhan yang sedang berjalan.
-                        kotlinx.coroutines.ensureActive(kotlinx.coroutines.currentCoroutineContext())
+                        if (downloadJob != null && !downloadJob.isActive) {
+                            throw kotlinx.coroutines.CancellationException("unduhan dibatalkan")
+                        }
                         val n = input.read(buf)
                         if (n < 0) break
                         out.write(buf, 0, n)
