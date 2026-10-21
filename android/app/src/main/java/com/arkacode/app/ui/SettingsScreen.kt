@@ -59,6 +59,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onStop: (() -> Unit)? = null,
     onShowIntegrations: (() -> Unit)? = null,
+    onOpenDistro: (() -> Unit)? = null,
     engine: EngineManager? = null,
     onRestartEngine: (() -> Unit)? = null,
 ) {
@@ -197,8 +198,7 @@ fun SettingsScreen(
                             engineVersion?.let { I18n.s.engineInstalled(EngineRelease.bare(it)) }
                                 ?: I18n.s.engineNotInstalled,
                             style = MaterialTheme.typography.bodySmall,
-                        )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        )                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(I18n.s.engineAutoUpdate, modifier = Modifier.weight(1f))
                             Switch(
                                 checked = autoUpdate,
@@ -274,6 +274,20 @@ fun SettingsScreen(
                                     enabled = !engineBusy,
                                 ) { Text(I18n.s.engineUpdateNow) }
                             }
+                        }
+                    }
+                }
+
+                ClayCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(I18n.s.navDistro, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            I18n.s.distroSummary,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Button(onClick = { onOpenDistro?.invoke() }) {
+                            Text(I18n.s.distroOpen)
                         }
                     }
                 }

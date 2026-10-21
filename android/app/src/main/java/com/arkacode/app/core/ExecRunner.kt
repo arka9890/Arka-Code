@@ -10,14 +10,18 @@ import java.io.InputStreamReader
 import java.util.concurrent.TimeUnit
 
 /**
- * Eksekusi command `run_command` di dalam distro Alpine asli via proot (tanpa root).
+ * Eksekusi command `run_command` di dalam distro Linux asli.
+ *
+ * Dua backend, dipilih lewat [RuntimeMode]:
+ *  - [RuntimeMode.PROOT] — distro Alpine/dsb di dalam proot (tanpa root).
+ *  - [RuntimeMode.TERMUX] — langsung di environment Termux yang terpasang.
  *
  * Backend shell Android (`/system/bin/sh`, toybox) sudah dihapus: tidak ada
- * package manager dan tidak cukup untuk pekerjaan coding. Sekarang kalau distro
- * belum siap, [run] melempar error yang menjelaskan langkah perbaikannya — bukan
- * diam-diam menjalankan command di shell Android.
+ * package manager dan tidak cukup untuk pekerjaan coding. Sekarang kalau
+ * runtime belum siap, [run] melempar error yang menjelaskan langkah
+ * perbaikannya — bukan diam-diam menjalankan command di shell Android.
  *
- * Jaminan keamanan tetap: allowlist opsional, timeout, cap output 200 KB, dan
+ * Garantean keamanan tetap: allowlist opsional, timeout, cap output 200 KB, dan
  * approval gate dari UI (5 tool sensitif).
  */
 data class ExecResult(
@@ -31,6 +35,8 @@ data class ExecResult(
 class ExecRunner(
     private val context: Context,
     private val distro: DistroManager = DistroManager(context),
+    private val runtimeMode: RuntimeMode = RuntimeMode.PROOT,
+    private val termux: TermuxBridge = TermuxBridge(context),
 ) {
     companion object {
         /** Timeout default satu command di distro (apk add bisa lama). */
@@ -56,13 +62,19 @@ class ExecRunner(
         }
     }
 
-    /** Alasan distro belum siap (cek ringan, tanpa menghitung ukuran rootfs); null = siap. */
-    fun notReadyReason(): String? = when {
-        distro.prootBinary() == null || distro.loaderBinary() == null ->
-            "binary proot tidak ada di APK ini (build ulang dengan jaringan agar task downloadProotBinaries berhasil)"
-        !distro.isInstalled() ->
-            "distro Alpine belum dipasang (Settings → Command & Distro → Unduh & pasang)"
-        else -> null
+    /** Alasan runtime belum siap (cek ringan, tanpa menghitung ukuran rootfs); null = siap. */
+    fun notReadyReason(): String? = when (runtimeMode) {
+        RuntimeMode.TERMUX -> {
+            val st = termux.status()
+            if (st.ready) null else st.message
+        }
+        RuntimeMode.PROOT -> when {
+            distro.prootBinary() == null || distro.loaderBinary() == null ->
+                "binary proot tidak ada di APK ini (build ulang dengan jaringan agar task downloadProotBinaries berhasil)"
+            !distro.isInstalled() ->
+                "distro ${distro.spec.label} belum dipasang (Settings → Distro → Unduh & pasang)"
+            else -> null
+        }
     }
 
     suspend fun run(
@@ -74,13 +86,42 @@ class ExecRunner(
         if (!isAllowed(command)) throw IllegalStateException("command not in allowlist")
 
         notReadyReason()?.let { reason ->
-            throw IllegalStateException("Distro Alpine belum siap: $reason.")
+            throw IllegalStateException("Runtime belum siap: $reason.")
         }
 
-        val fs = VirtualFs(context)
-        val prootWorkspace = runCatching { fs.prootWorkspaceDir() }.getOrNull()
-        val sessionWorkspace = sessionId?.let { runCatching { fs.workspaceDir(it) }.getOrNull() }
-        return runProot(command, prootWorkspace, sessionWorkspace, settings)
+        return when (runtimeMode) {
+            RuntimeMode.TERMUX -> runTermux(command, settings)
+            RuntimeMode.PROOT -> {
+                val fs = VirtualFs(context)
+                val prootWorkspace = runCatching { fs.prootWorkspaceDir() }.getOrNull()
+                val sessionWorkspace = sessionId?.let { runCatching { fs.workspaceDir(it) }.getOrNull() }
+                runProot(command, prootWorkspace, sessionWorkspace, settings)
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ termux
+
+    /**
+     * Jalankan command di Termux.
+     *
+     * Termux menulis stdout+stderr ke berkas (harus di lokasi yang bisa ditulis
+     * Termux juga) lalu app membacanya lewat URI MediaStore milik sendiri.
+     */
+    private suspend fun runTermux(command: String, settings: ExecSettings): ExecResult {
+        val sink = termux.createOutputSink("arkacode-cmd")
+            ?: throw IllegalStateException("Tidak bisa menyiapkan berkas output di folder Download.")
+        val timeout = settings.timeoutMs.takeIf { it > 0 } ?: PROOT_DEFAULT_TIMEOUT_MS
+        val result = termux.run(
+            command = command,
+            outputFile = sink.file,
+            outputUri = sink.uri,
+            timeoutMs = timeout,
+        )
+        // Bereskan berkas di Downloads supaya tidak menumpuk.
+        runCatching { context.contentResolver.delete(sink.uri, null, null) }
+        runCatching { sink.file.delete() }
+        return result.copy(stdout = result.stdout.take(MAX_OUT))
     }
 
     // ------------------------------------------------------------------- proot
@@ -92,7 +133,7 @@ class ExecRunner(
         settings: ExecSettings,
     ): ExecResult {
         val argv = distro.buildProotCommand(command, prootWorkspace, sessionWorkspace, settings)
-            ?: throw IllegalStateException("Distro Alpine belum siap (rootfs atau binary proot tidak lengkap).")
+            ?: throw IllegalStateException("Distro ${distro.spec.label} belum siap (rootfs atau binary proot tidak lengkap).")
 
         val builder = ProcessBuilder(argv)
         builder.directory(context.filesDir)
@@ -147,7 +188,7 @@ class ExecRunner(
             stderr = stderr.toString().take(MAX_OUT),
             exitCode = exitCode,
             timedOut = timedOut,
-            backend = "proot/Alpine",
+            backend = "proot/${distro.spec.label}",
         )
     }
 

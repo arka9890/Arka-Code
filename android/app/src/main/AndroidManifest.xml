@@ -12,6 +12,28 @@
          sendiri; Android tetap meminta persetujuan pengguna saat memasang. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!--
+        Package visibility (Android 11+ / targetSdk 30+).
+
+        Tanpa elemen <queries>, `getPackageInfo()` untuk paket yang tidak
+        dideklarasikan di sini akan melempar NameNotFoundException — meskipun
+        paketnya benar-benar terpasang. Ini membuat:
+          * TTS engine sherpa-onnx (dipasang sendiri oleh app) selalu terbaca
+            "belum terpasang" sehingga suara neural tidak pernah dipakai.
+          * Termux (runtime alternatif untuk command) selalu terbaca "tidak
+            terpasang".
+    -->
+    <queries>
+        <package android:name="com.k2fsa.sherpa.onnx.tts.engine" />
+        <package android:name="com.termux" />
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+        <intent>
+            <action android:name="com.termux.RUN_COMMAND" />
+        </intent>
+    </queries>
+
     <application
         android:name=".ArkacodeApp"
         android:allowBackup="true"

@@ -8,6 +8,8 @@ import kotlinx.coroutines.withContext
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
+import org.apache.commons.compress.compressors.xz.XZCompressorInputStream
+import org.apache.commons.compress.compressors.zstandard.ZstdCompressorInputStream
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -25,6 +27,10 @@ data class DistroStatus(
     val rootfsDir: File?,
     val sizeBytes: Long,
     val message: String,
+    /** Id distro yang sedang dipakai ("alpine-3.20", "custom", …). */
+    val distroId: String = "alpine-3.20",
+    /** Nama distro yang enak dibaca. */
+    val distroLabel: String = "Alpine Linux",
 )
 
 /**
@@ -44,13 +50,23 @@ data class DistroStatus(
  *    `downloadProotBinaries` yang mengisinya (lihat app/build.gradle.kts).
  *  - Rootfs Alpine (file biasa) tetap boleh di folder data karena dieksekusi
  *    *lewat* proot-loader, bukan langsung oleh kernel.
+ *
+ * Distro yang dipakai bisa diganti lewat [spec] — lihat [DistroCatalog].
  */
-class DistroManager(private val context: Context) {
+class DistroManager(
+    private val context: Context,
+    val spec: DistroSpec = DistroCatalog.ALPINE_320,
+) {
 
     companion object {
         const val DISTRO_NAME = "alpine"
 
-        /** Alpine minirootfs per-ABI (v3.20, LTS ringan ±3.6 MB). */
+        /**
+         * Alpine minirootfs per-ABI (v3.20, LTS ringan ±3.6 MB).
+         *
+         * Dipertahankan untuk kompatibilitas; lebih baik pakai
+         * [DistroCatalog.ALPINE_320] yang menangani beberapa mirror.
+         */
         fun rootfsUrlFor(abi: String): String {
             val arch = when (abi.lowercase()) {
                 "arm64-v8a" -> "aarch64"
@@ -87,7 +103,7 @@ class DistroManager(private val context: Context) {
     }
 
     private val distroRoot = File(context.filesDir, "distro").apply { mkdirs() }
-    val rootfsDir: File get() = File(distroRoot, DISTRO_NAME)
+    val rootfsDir: File get() = File(distroRoot, spec.folderName)
     private val tmpDir = File(context.filesDir, "proot-tmp").apply { mkdirs() }
 
     /** nativeLibraryDir berisi libproot.so / libtalloc.so / libproot-loader.so dari APK. */
@@ -108,7 +124,8 @@ class DistroManager(private val context: Context) {
         ?.firstOrNull { it.name == "libandroid-shmem.so" }
 
     /**
-     * Rootfs dianggap terpasang kalau berkas penanda Alpine ada sebagai FILE biasa.
+     * Rootfs dianggap terpasang kalau salah satu penanda distro ([spec.releaseMarkers])
+     * ada sebagai FILE biasa.
      *
      * Jangan pakai `bin/sh`: di Alpine itu symlink absolut `/bin/sh -> /bin/busybox`.
      * `File.exists()` mengikuti symlink ke path HOST Android (`/bin/busybox` tidak
@@ -116,7 +133,9 @@ class DistroManager(private val context: Context) {
      * Ini penyebab bug "sudah di-install tapi tidak terbaca".
      */
     fun isInstalled(): Boolean =
-        File(rootfsDir, "etc/alpine-release").isFile || File(rootfsDir, "bin/busybox").isFile
+        spec.releaseMarkers.any { File(rootfsDir, it).isFile } ||
+            File(rootfsDir, "etc/alpine-release").isFile ||
+            File(rootfsDir, "bin/busybox").isFile
 
     fun status(): DistroStatus {
         val proot = prootBinary()
@@ -127,8 +146,8 @@ class DistroManager(private val context: Context) {
             proot == null || loader == null ->
                 "Binary proot belum ada di APK ini (task Gradle downloadProotBinaries gagal/di-skip). " +
                     "Build ulang dengan jaringan agar run_command bisa jalan."
-            !installed -> "Rootfs Alpine belum dipasang. Unduh ±3,6 MB untuk mengaktifkan distro."
-            else -> "Alpine siap (${size / (1024 * 1024)} MB) di ${rootfsDir.absolutePath}"
+            !installed -> "${spec.label} belum dipasang. Unduh ±${spec.approxSizeMb} MB untuk mengaktifkan distro."
+            else -> "${spec.label} siap (${size / (1024 * 1024)} MB) di ${rootfsDir.absolutePath}"
         }
         return DistroStatus(
             abi = abi,
@@ -138,6 +157,8 @@ class DistroManager(private val context: Context) {
             rootfsDir = if (installed) rootfsDir else null,
             sizeBytes = size,
             message = message,
+            distroId = spec.id,
+            distroLabel = spec.label,
         )
     }
 
@@ -146,67 +167,115 @@ class DistroManager(private val context: Context) {
     // ------------------------------------------------------------------ install
 
     /**
-     * Unduh rootfs Alpine lalu ekstrak ke folder data aplikasi.
+     * Unduh rootfs distro lalu ekstrak ke folder data aplikasi.
+     *
+     * [customUrl] dipakai kalau distro adalah [DistroCatalog.CUSTOM] — user
+     * bisa memberi URL rootfs sendiri (Debian/Ubuntu/apa pun).
+     *
+     * Alur kandidat:
+     *  1. URL dari [DistroSpec.rootfsUrls] (utama → mirror).
+     *  2. Kalau semuanya 404, [DistroSpec.resolveLatestUrls] mencari versi
+     *     terbaru yang masih ada (Alpine sesekali menghapus versi lama).
+     *  3. Kalau [customUrl] diisi, URL itu dipakai apa adanya.
+     *
      * [onProgress] menerima 0..100 dan label status untuk ditampilkan di UI.
      */
     suspend fun install(
-        rootfsUrl: String,
+        customUrl: String? = null,
         onProgress: (Int, String) -> Unit = { _, _ -> },
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val candidates = buildList {
-                add(rootfsUrl)
-                addAll(mirrorCandidates(rootfsUrl))
+            val custom = customUrl?.trim()?.takeIf { it.isNotEmpty() }
+            var candidates: List<String> = when {
+                custom != null -> listOf(custom)
+                else -> spec.rootfsUrls(abi)
             }.distinct()
+
             var lastError: Exception? = null
             for ((index, url) in candidates.withIndex()) {
-                try {
-                    onProgress(0, "Mengunduh ${url.substringAfterLast('/')} (${index + 1}/${candidates.size})…")
-                    val tmpArchive = File(tmpDir, "rootfs.tar.gz")
-                    download(url) { percent, read, total ->
-                        val label = if (total > 0) {
-                            "Mengunduh ${read / 1024 / 1024} MB / ${total / 1024 / 1024} MB"
-                        } else {
-                            "Mengunduh ${read / 1024 / 1024} MB"
-                        }
-                        onProgress(percent / 2, label)
-                    }
-                    onProgress(52, "Mengekstrak rootfs…")
-                    // Bersihkan sisa instalasi sebelumnya supaya tidak campur.
-                    rootfsDir.deleteRecursively()
-                    rootfsDir.mkdirs()
-                    extractTarGz(tmpArchive) { percent -> onProgress(52 + percent / 2, "Mengekstrak rootfs… $percent%") }
-                    tmpArchive.delete()
-                    check(isInstalled()) { "Ekstraksi selesai tapi etc/alpine-release tidak ada — arsip bukan rootfs Alpine." }
-                    onProgress(97, "Menyiapkan /root/workspace & resolv.conf…")
-                    postInstall()
-                    onProgress(100, "Alpine terpasang.")
-                    return@runCatching
-                } catch (e: Exception) {
-                    lastError = e
+                val outcome = tryInstall(url, index, candidates.size, onProgress)
+                // tryInstall mengembalikan null kalau BERHASIL.
+                if (outcome == null) return@runCatching
+                lastError = outcome
+            }
+
+            // Semua kandidat gagal → coba cari versi terbaru yang masih ada.
+            if (custom == null && spec.resolveLatestUrls != null) {
+                val fresh = spec.resolveLatestUrls(abi)
+                for ((index, url) in fresh.withIndex()) {
+                    val outcome = tryInstall(url, index, fresh.size, onProgress)
+                    if (outcome == null) return@runCatching
+                    lastError = outcome
                 }
             }
+
             throw lastError ?: IllegalStateException("Unduhan rootfs gagal")
         }
     }
 
-    private fun mirrorCandidates(url: String): List<String> {
-        val path = url.substringAfter("alpine.org/", "")
-        if (path.isBlank() || !path.startsWith("alpine/")) return emptyList()
-        return ROOTFS_MIRRORS.map { "$it/${path.removePrefix("alpine/")}" }
+    /**
+     * Coba pasang rootfs dari satu URL. Mengembalikan null kalau BERHASIL,
+     * atau exception kalau gagal (supaya kandidat berikutnya dicoba).
+     */
+    private suspend fun tryInstall(
+        url: String,
+        index: Int,
+        total: Int,
+        onProgress: (Int, String) -> Unit,
+    ): Exception? {
+        return try {
+            onProgress(0, "Mengunduh ${url.substringAfterLast('/')} (${index + 1}/${total})…")
+            val tmpArchive = File(tmpDir, "rootfs" + archiveSuffix(url))
+            download(url) { percent, read, size ->
+                val label = if (size > 0) {
+                    "Mengunduh ${read / 1024 / 1024} MB / ${size / 1024 / 1024} MB"
+                } else {
+                    "Mengunduh ${read / 1024 / 1024} MB"
+                }
+                onProgress(percent / 2, label)
+            }
+            onProgress(52, "Mengekstrak rootfs…")
+            // Bersihkan sisa instalasi sebelumnya supaya tidak campur.
+            rootfsDir.deleteRecursively()
+            rootfsDir.mkdirs()
+            extractTar(tmpArchive) { percent -> onProgress(52 + percent / 2, "Mengekstrak rootfs… $percent%") }
+            tmpArchive.delete()
+            check(isInstalled()) {
+                "Ekstraksi selesai tapi penanda distro (${spec.releaseMarkers.firstOrNull() ?: "os-release"}) tidak ada — arsip bukan rootfs ${spec.label}."
+            }
+            onProgress(97, "Menyiapkan /root/workspace & resolv.conf…")
+            postInstall()
+            onProgress(100, "${spec.label} terpasang.")
+            null
+        } catch (e: Exception) {
+            e
+        }
     }
 
-    /** Pasang dari file .tar.gz lokal hasil SAF (opsi offline). */
+    /** Ekstensi arsip dari URL (default .tar.gz). */
+    private fun archiveSuffix(url: String): String {
+        val path = url.substringBefore('?').substringBefore('#')
+        return when {
+            path.endsWith(".tar.xz") -> ".tar.xz"
+            path.endsWith(".tar.gz") || path.endsWith(".tgz") -> ".tar.gz"
+            path.endsWith(".tar.zst") -> ".tar.zst"
+            else -> ".tar.gz"
+        }
+    }
+
+    /** Pasang dari file .tar.gz/.tar.xz lokal hasil SAF (opsi offline). */
     suspend fun installFromStream(input: InputStream, onProgress: (Int, String) -> Unit = { _, _ -> }): Result<Unit> =
         withContext(Dispatchers.IO) {
             runCatching {
                 onProgress(5, "Menyiapkan…")
                 rootfsDir.deleteRecursively()
                 rootfsDir.mkdirs()
-                extractTarGz(input) { percent -> onProgress(5 + percent * 9 / 10, "Mengekstrak rootfs… $percent%") }
-                check(isInstalled()) { "Arsip bukan rootfs Alpine (etc/alpine-release tidak ditemukan)." }
+                extractTar(input) { percent -> onProgress(5 + percent * 9 / 10, "Mengekstrak rootfs… $percent%") }
+                check(isInstalled()) {
+                    "Arsip bukan rootfs yang dikenal (penanda ${spec.releaseMarkers.firstOrNull() ?: "os-release"} tidak ditemukan)."
+                }
                 postInstall()
-                onProgress(100, "Alpine terpasang dari file lokal.")
+                onProgress(100, "${spec.label} terpasang dari file lokal.")
             }
         }
 
@@ -276,14 +345,14 @@ class DistroManager(private val context: Context) {
         }
     }
 
-    /** Ekstraksi .tar.gz aman (menolak path keluar rootfs + menangani symlink/hardlink). */
-    private fun extractTarGz(source: File, onProgress: (Int) -> Unit = {}): Unit =
-        BufferedInputStream(source.inputStream()).use { extractTarGz(it, onProgress) }
+    /** Ekstraksi .tar(.gz/.xz/.zst) aman (menolak path keluar rootfs + menangani symlink/hardlink). */
+    private fun extractTar(source: File, onProgress: (Int) -> Unit = {}): Unit =
+        BufferedInputStream(source.inputStream()).use { extractTar(it, onProgress) }
 
-    private fun extractTarGz(input: InputStream, onProgress: (Int) -> Unit = {}) {
+    private fun extractTar(input: InputStream, onProgress: (Int) -> Unit = {}) {
         val root = rootfsDir.canonicalFile
         var buffer = ByteArray(64 * 1024)
-        TarArchiveInputStream(GzipCompressorInputStream(input, true)).use { tar ->
+        TarArchiveInputStream(decompressor(input)).use { tar ->
             var entryCount = 0
             while (true) {
                 val entry: TarArchiveEntry = tar.nextEntry ?: break
@@ -344,6 +413,34 @@ class DistroManager(private val context: Context) {
             }
         }
         buffer = ByteArray(0)
+    }
+
+    /**
+     * Deteksi kompresi dari magic bytes stream — rootfs Alpine (.tar.gz) dan
+     * rootfs Debian/Ubuntu (.tar.xz) sama-sama didukung tanpa perlu tahu
+     * ekstensi URL.
+     */
+    private fun decompressor(input: InputStream): InputStream {
+        val head = ByteArray(6)
+        var read = 0
+        while (read < head.size) {
+            val n = input.read(head, read, head.size - read)
+            if (n < 0) break
+            read += n
+        }
+        val prefix = ByteArray(read)
+        System.arraycopy(head, 0, prefix, 0, read)
+        val replay = java.io.SequenceInputStream(java.io.ByteArrayInputStream(prefix), input)
+        return when {
+            read >= 2 && prefix[0] == 0x1f.toByte() && prefix[1] == 0x8b.toByte() ->
+                GzipCompressorInputStream(replay, true)
+            read >= 6 && prefix[0] == 0xfd.toByte() && prefix[1] == '7'.code.toByte() ->
+                XZCompressorInputStream(replay, true)
+            read >= 4 && prefix[0] == 0x28.toByte() && prefix[1] == 0xb5.toByte() &&
+                prefix[2] == 0x2f.toByte() && prefix[3] == 0xfd.toByte() ->
+                ZstdCompressorInputStream(replay, true)
+            else -> replay // tar polos
+        }
     }
 
     // ----------------------------------------------------------------- command

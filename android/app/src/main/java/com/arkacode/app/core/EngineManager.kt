@@ -62,7 +62,35 @@ sealed interface EngineState {
 }
 
 class EngineManager(private val context: Context) {
-    private val distro = DistroManager(context)
+
+    /**
+     * Distro yang dipakai untuk rootfs proot.
+     *
+     * Bisa diganti lewat [setDistro] — user bisa memilih Alpine (versi
+     * berapa pun) atau rootfs sendiri lewat Settings → Distro.
+     */
+    @Volatile
+    var distroSpec: DistroSpec = DistroCatalog.ALPINE_320
+        private set
+
+    private var distro: DistroManager = DistroManager(context, distroSpec)
+
+    /**
+     * Runtime tempat server opencode dijalankan.
+     *
+     * [RuntimeMode.TERMUX] = server hidup di Termux (command AI lalu berjalan
+     * di lingkungan Termux). [RuntimeMode.PROOT] = server hidup di rootfs proot.
+     */
+    @Volatile
+    var runtimeMode: RuntimeMode = RuntimeMode.PROOT
+
+    private val termux: TermuxBridge = TermuxBridge(context)
+
+    /** Ganti distro aktif. Rootfs lama tidak dihapus — user bisa ganti kembali. */
+    fun setDistro(spec: DistroSpec) {
+        distroSpec = spec
+        distro = DistroManager(context, spec)
+    }
 
     private val engineDir: File get() = File(context.filesDir, "engine").apply { mkdirs() }
     private val workspaceDir: File get() = File(context.filesDir, "workspace").apply { mkdirs() }
@@ -435,17 +463,96 @@ class EngineManager(private val context: Context) {
 
     fun distroStatus(): DistroStatus = distro.status()
 
-    suspend fun setupDistro(onProgress: (Int, String) -> Unit = { _, _ -> }): Result<Unit> =
-        distro.install(DistroManager.DEFAULT_ROOTFS_URL, onProgress)
+    /**
+     * Pasang rootfs distro yang sedang dipilih.
+     *
+     * [customRootfsUrl] dipakai untuk distro "custom" — URL rootfs milik user
+     * (Debian/Ubuntu/apa pun). Kalau kosong, distro custom harus dipasang
+     * dari berkas lokal (Settings → Files → Impor).
+     */
+    suspend fun setupDistro(
+        customRootfsUrl: String? = null,
+        onProgress: (Int, String) -> Unit = { _, _ -> },
+    ): Result<Unit> = distro.install(customRootfsUrl, onProgress)
 
     /**
      * Jalankan `opencode serve` sebagai proses persisten, lalu tunggu `/api/info`
      * (v2) OK (maks [waitMs]). Kembalikan port bila siap.
+     *
+     *_runtime_ menentukan tempat server hidup — dan dengan begitu tempat tool
+     * bash opencode berjalan:
+     *  - [RuntimeMode.PROOT] — di dalam rootfs (proot), seperti sebelumnya.
+     *  - [RuntimeMode.TERMUX] — di dalam Termux, jadi command AI berjalan di
+     *    lingkungan Termux (glibc/bionic + `pkg`) dan tidak butuh rootfs sama
+     *    sekali. Syaratnya `opencode` sudah terpasang di Termux.
      */
     suspend fun startServer(
         port: Int = EngineConfig.DEFAULT_PORT,
         password: String,
         workDir: File = workspaceDir,
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        when (runtimeMode) {
+            RuntimeMode.TERMUX -> startServerInTermux(port, password)
+            RuntimeMode.PROOT -> startServerInProot(port, password, workDir)
+        }
+    }
+
+    /**
+     * Server di dalam Termux.
+     *
+     * Termux harus sudah punya `opencode` terpasang — app tidak bisa menulis ke
+     * folder privat Termux, dan berkas di shared storage tidak bisa di-exec
+     * (noexec). Jadi opencode dipasang dari sisi Termux (mis.
+     * `pkg install nodejs-lts && npm i -g opencode-ai`), lalu app cuma
+     * menjalankannya.
+     */
+    private suspend fun startServerInTermux(port: Int, password: String): Result<Int> {
+        val st = termux.status()
+        if (!st.installed) {
+            return Result.failure(IllegalStateException("Termux tidak terpasang di perangkat."))
+        }
+        if (!st.permissionGranted) {
+            return Result.failure(
+                IllegalStateException("Termux belum mengizinkan app ini menjalankan script. Buka Distro → Izinkan di Termux."),
+            )
+        }
+        val probe = termux.probe("command -v opencode || true")
+        if (probe.isBlank() || !probe.contains("opencode")) {
+            return Result.failure(
+                IllegalStateException(
+                    "opencode belum terpasang di Termux. Jalankan di Termux: " +
+                        "pkg install nodejs-lts && npm i -g opencode-ai",
+                ),
+            )
+        }
+        logFile().appendText("\n===== serve start (termux) port=$port =====\n")
+        val started = termux.startBackground(
+            command = "OPENCODE_SERVER_PASSWORD='$password' opencode serve --port $port " +
+                "--hostname ${EngineConfig.DEFAULT_HOST} >> '${logFile().absolutePath}' 2>&1",
+        )
+        if (!started) {
+            return Result.failure(IllegalStateException("Termux menolak menjalankan perintah."))
+        }
+        val client = OpenCodeClient(port = port, password = password)
+        val deadline = System.currentTimeMillis() + 60_000
+        var lastErr = ""
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                val h = client.health()
+                if (h.healthy) return Result.success(port)
+                lastErr = "healthy=false"
+            } catch (e: Exception) {
+                lastErr = e.message ?: "menunggu..."
+            }
+            delay(1000)
+        }
+        return Result.failure(IllegalStateException("Server Termux tidak siap dalam 60 dtk ($lastErr)."))
+    }
+
+    private suspend fun startServerInProot(
+        port: Int,
+        password: String,
+        workDir: File,
     ): Result<Int> = withContext(Dispatchers.IO) {
         runCatching {
             if (serverProcess?.isAlive == true) return@runCatching port

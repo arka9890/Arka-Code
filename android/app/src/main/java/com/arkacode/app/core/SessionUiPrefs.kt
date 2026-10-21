@@ -106,4 +106,43 @@ class SessionUiPrefs(private val context: Context) {
     suspend fun setLastUpdateCheck(epochMs: Long) {
         context.uiPrefsStore.edit { it[longPreferencesKey("engine_last_check")] = epochMs }
     }
+
+    // --- Runtime & distro ---------------------------------------------------
+
+    /**
+     * Runtime untuk eksekusi command: proot (default) atau Termux.
+     */
+    suspend fun runtimeMode(): RuntimeMode =
+        context.uiPrefsStore.data.map { prefs ->
+            RuntimeMode.from(prefs[stringPreferencesKey("runtime_mode")])
+        }.first()
+
+    suspend fun setRuntimeMode(mode: RuntimeMode) {
+        context.uiPrefsStore.edit { it[stringPreferencesKey("runtime_mode")] = mode.name }
+    }
+
+    /**
+     * Id distro yang dipakai untuk rootfs proot ("alpine-3.20", "custom", …).
+     */
+    suspend fun distroId(): String =
+        context.uiPrefsStore.data.map { prefs ->
+            prefs[stringPreferencesKey("distro_id")] ?: DistroCatalog.ALPINE_320.id
+        }.first()
+
+    suspend fun setDistroId(id: String) {
+        context.uiPrefsStore.edit { it[stringPreferencesKey("distro_id")] = id }
+    }
+
+    /**
+     * URL rootfs kustom (dipakai kalau distro = "custom").
+     * Kosong = pakai berkas lokal lewat SAF.
+     */
+    suspend fun customRootfsUrl(): String =
+        context.uiPrefsStore.data.map { prefs ->
+            prefs[stringPreferencesKey("custom_rootfs_url")] ?: ""
+        }.first()
+
+    suspend fun setCustomRootfsUrl(url: String) {
+        context.uiPrefsStore.edit { it[stringPreferencesKey("custom_rootfs_url")] = url.trim() }
+    }
 }

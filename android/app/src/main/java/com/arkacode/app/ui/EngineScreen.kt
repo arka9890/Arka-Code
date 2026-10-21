@@ -56,6 +56,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.arkacode.app.core.DistroCatalog
 import com.arkacode.app.core.EngineConfig
 import com.arkacode.app.core.EngineManager
 import com.arkacode.app.core.EngineService
@@ -107,6 +108,12 @@ fun EngineScreen(
         runCatching { com.arkacode.app.core.SessionUiPrefs(context).langCode() }.getOrNull()?.let { code ->
             I18n.lang = AppLang.entries.firstOrNull { it.code == code } ?: AppLang.ID
         }
+        // Runtime + distro pilihan user: server harus Know pilihan ini
+        // SEBELUM pipeline start, jadi di sini (bukan di dalam pipeline).
+        withContext(Dispatchers.IO) {
+            runCatching { uiPrefs.runtimeMode() }.getOrNull()?.let { engine.runtimeMode = it }
+            runCatching { uiPrefs.distroId() }.getOrNull()?.let { engine.setDistro(DistroCatalog.byId(it)) }
+        }
     }
 
     var screen by remember { mutableStateOf<Screen>(Screen.Boot(0)) }
@@ -115,6 +122,7 @@ fun EngineScreen(
     var showCaps by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showBuddy by remember { mutableStateOf(false) }
+    var showDistro by remember { mutableStateOf(false) }
     var lines by remember { mutableStateOf(listOf<String>()) }
     var failMsg by remember { mutableStateOf<String?>(null) }
     var working by remember { mutableStateOf(false) }
@@ -140,20 +148,28 @@ fun EngineScreen(
                 screen = Screen.Ready(alive.version)
                 return
             }
-            // 1. Distro
-            val distro = withContext(Dispatchers.IO) { engine.distroStatus() }
-            if (!distro.installed) {
-                log("Alpine belum ada — mengunduh & mengekstrak (±4 MB)…")
-                var last = -1
-                engine.setupDistro { p, label ->
-                    if (p / 10 != last / 10) {
-                        last = p
-                        scope.launch { log("distro $p% — $label") }
-                    }
-                }.getOrThrow()
-                log("distro siap.")
+            // 1. Distro — hanya relevan kalau runtime = proot. Di mode Termux
+            //    server hidup di Termux dan tidak butuh rootfs sama sekali.
+            if (engine.runtimeMode == com.arkacode.app.core.RuntimeMode.TERMUX) {
+                log("runtime: Termux — server dijalankan di aplikasi Termux.")
             } else {
-                log("distro siap (${distro.message}).")
+                val distro = withContext(Dispatchers.IO) { engine.distroStatus() }
+                if (!distro.installed) {
+                    log("${distro.distroLabel} belum ada — mengunduh & mengekstrak…")
+                    var last = -1
+                    val customUrl = withContext(Dispatchers.IO) {
+                        runCatching { uiPrefs.customRootfsUrl() }.getOrDefault("")
+                    }
+                    engine.setupDistro(customRootfsUrl = customUrl.ifBlank { null }) { p, label ->
+                        if (p / 10 != last / 10) {
+                            last = p
+                            scope.launch { log("distro $p% — $label") }
+                        }
+                    }.getOrThrow()
+                    log("distro siap.")
+                } else {
+                    log("distro siap (${distro.message}).")
+                }
             }
             // 2. Engine
             if (!withContext(Dispatchers.IO) { engine.isDownloaded() }) {
@@ -261,12 +277,13 @@ fun EngineScreen(
                 // kalau pipeline selesai saat app di-background, jangan crash.
                 runCatching { EngineService.start(context, port, s.version) }
             }
-            BackHandler(enabled = showCaps || showProviders || showSettings || showBuddy || target != null) {
+            BackHandler(enabled = showCaps || showProviders || showSettings || showBuddy || showDistro || target != null) {
                 when {
                     showCaps -> showCaps = false
                     showProviders -> showProviders = false
                     showSettings -> showSettings = false
                     showBuddy -> showBuddy = false
+                    showDistro -> showDistro = false
                     else -> chatTarget = null
                 }
             }
@@ -291,6 +308,7 @@ fun EngineScreen(
                     isDark = darkTheme,
                     onToggleTheme = onToggleTheme,
                     onBack = { showSettings = false },
+                    onOpenDistro = { showSettings = false; showDistro = true },
                     onStop = {
                         scope.launch {
                             withContext(Dispatchers.IO) { engine.stopServer() }
@@ -300,6 +318,12 @@ fun EngineScreen(
                         }
                     },
                     onRestartEngine = ::restartEngine,
+                )
+            } else if (showDistro) {
+                DistroScreen(
+                    engine = engine,
+                    onBack = { showDistro = false },
+                    onRuntimeChanged = { /* pipeline dijalankan ulang oleh user dari Settings */ },
                 )
             } else if (showBuddy) {
                 BuddyScreen(client = chatClient, runs = runs, onBack = { showBuddy = false })
