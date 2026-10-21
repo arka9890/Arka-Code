@@ -45,6 +45,12 @@ sampingnya, putih di atas biru brand `#5B9BE0`.
   Files. Tanpa API key, tanpa logika AI di sisi app.
 - **Engine** — unduh binary opencode pinned (sha256), start/stop, health,
   auto-provisioning saat pertama buka, editor port & password server, log.
+- **Distro & runtime** — pilih distro rootfs yang dipakai untuk eksekusi
+  command: **Alpine 3.20 (LTS) / 3.21 / 3.22 / edge**, atau **rootfs sendiri**
+  (URL `.tar.gz`/`.tar.xz` atau berkas dari penyimpanan — mis. Debian/Ubuntu).
+  Runtime alternatif: jalankan `opencode serve` di dalam aplikasi **Termux**
+  yang terpasang, tanpa rootfs sama sekali. Rootfs tiap distro disimpan
+  terpisah, jadi bisa berganti tanpa mengunduh ulang.
 - **i18n ID/EN**, tema claymorphism terang/gelap persisten, backup rules.
 
 ## Arsitektur
@@ -103,6 +109,44 @@ Catatan: task `downloadProotBinaries` mengunduh binary proot (paket Termux) ke
 `jniLibs`. Bila mirror tidak terjangkau, build tetap sukses tetapi fitur
 distro/`run_command` tidak aktif.
 
+### Task unduhan saat build
+
+| Task | Isi | Lewati dengan |
+|---|---|---|
+| `downloadProotBinaries` | `libproot.so`, `libproot-loader.so`, `libtalloc.so`, `libandroid-shmem.so` per ABI (dari paket Termux, diverifikasi SHA256) | `-Pproot.skip=true` |
+| `downloadTtsEngineApk` | installer TTS engine sherpa-onnx (~148 MB) | `-Ptts.skip=true` |
+
+`downloadProotBinaries` **menggagalkan build** kalau tidak ada satu pun ABI yang
+siap — supaya APK tanpa binary proot tidak terbit diam-diam dan `run_command`
+mati total di perangkat. Untuk build offline:
+
+```bash
+cd android && ./gradlew :app:assembleDebug -Pproot.allowMissing=true
+```
+
+Versi paket proot yang di-pin harus masih ada di mirror Termux. Kalau build
+gagal dengan `HTTP 404`, berarti versi tersebut sudah dihapus — naikkan
+`PROOT_VERSION` di `android/buildSrc/src/main/kotlin/arka/ProotBinaries.kt`
+**dan** perbarui peta `SHA256` di file yang sama (ambil dari index resmi
+`dists/stable/main/binary-<arch>/Packages`).
+
+### Memilih distro & runtime
+
+Menu **Pengaturan → Distro** menyediakan:
+
+- **Runtime** — `proot` (default) atau `Termux`.
+  - Mode Termux menjalankan `opencode serve` di dalam aplikasi Termux, jadi
+    tool bash opencode ikut berjalan di lingkungan Termux. Syaratnya Termux
+    terpasang, "Allow execution of scripts" diizinkan, dan `opencode` sudah
+    terpasang di Termux (`pkg install nodejs-lts && npm i -g opencode-ai`).
+  - Mode proot memakai rootfs yang diunduh app sendiri.
+- **Distro** — Alpine 3.20 / 3.21 / 3.22 / edge, atau "Rootfs sendiri".
+  Rootfs kustom bisa berupa URL `.tar.gz`/`.tar.xz` (Debian/Ubuntu/Fedora
+  dll.) maupun berkas yang dipilih lewat picker di aplikasi.
+
+> Berganti distro/runtime butuh **restart server** (Pengaturan → Stop → jalankan
+> lagi), karena proot dan env server sudah ditentukan saat proses start.
+
 ### Update di tempat (tanpa uninstall)
 
 Semua APK dari CI ditandatangani dengan **keystore bersama** yang ikut di repo
@@ -139,14 +183,15 @@ mengenali tiap build sebagai versi lebih baru.
 ```
 android/app/src/main/java/com/arkacode/app/
   ArkacodeApp.kt · MainActivity.kt
-  core/  EngineManager · EngineRelease · DistroManager · ExecRunner ·
+  core/  EngineManager · EngineRelease · DistroManager · DistroSpec · ExecRunner ·
          ExecSettings · SecureStore · GitCredentials · OpenCodeConfig ·
          Attachments · ArenaDownloadBridge · PromptExpander · SlashSuggest ·
-         SessionRunRegistry · SessionUiPrefs · VirtualFs
+         SessionRunRegistry · SessionUiPrefs · TermuxBridge · VirtualFs
   net/   OpenCodeClient · ServerModels
   ui/    ChatScreen · FilesScreen · ProvidersScreen · CapabilitiesScreen ·
-         EngineScreen · ArenaScreen · SettingsScreen · IntegrationsSheet ·
-         ModelPickerSheet · MarkdownText · Clay · Theme · I18n · SlashSuggest
+         EngineScreen · DistroScreen · ArenaScreen · SettingsScreen ·
+         IntegrationsSheet · ModelPickerSheet · MarkdownText · Clay · Theme ·
+         I18n · SlashSuggest
 ```
 
 ## Status

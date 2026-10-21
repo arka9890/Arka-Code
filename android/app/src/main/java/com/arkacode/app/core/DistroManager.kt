@@ -438,7 +438,9 @@ class DistroManager(
                 XZCompressorInputStream(replay, true)
             read >= 4 && prefix[0] == 0x28.toByte() && prefix[1] == 0xb5.toByte() &&
                 prefix[2] == 0x2f.toByte() && prefix[3] == 0xfd.toByte() ->
-                ZstdCompressorInputStream(replay, true)
+                // ZstdCompressorInputStream tidak punya overload (InputStream, boolean)
+                // di commons-compress 1.27 — hanya bisa pakai satu argumen.
+                ZstdCompressorInputStream(replay)
             else -> replay // tar polos
         }
     }

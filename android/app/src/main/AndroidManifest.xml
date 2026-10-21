@@ -11,6 +11,12 @@
     <!-- Arkacode memasang TTS engine neural (sherpa-onnx) yang dibundelnya
          sendiri; Android tetap meminta persetujuan pengguna saat memasang. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Terminal output runtime Termux ditulis ke folder Download publik.
+         Hanya dibutuhkan di Android 9 ke bawah (API 28); sejak API 29 penulisan
+         lewat MediaStore.Downloads tidak butuh izin penyimpanan. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
 
     <!--
         Package visibility (Android 11+ / targetSdk 30+).

@@ -200,7 +200,11 @@ object DistroCatalog {
             .map { it.groupValues[1] }
             .filter { v -> v.none { ch -> ch.isLetter() } } // buang rc/beta
             .distinct()
-            .sortedBy { v -> v.split('.').map { it.toIntOrNull() ?: 0 } }
+            // Urut secara numerik: "3.20.10" harus lebih besar dari "3.20.9".
+            // Dipakai kunci string nol-terisi supaya tetap Comparable.
+            .sortedBy { v ->
+                v.split('.').joinToString(".") { (it.toIntOrNull() ?: 0).toString().padStart(8, '0') }
+            }
             .lastOrNull()
     }
 

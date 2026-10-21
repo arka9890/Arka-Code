@@ -72,7 +72,9 @@ class TermuxBridge(private val context: Context) {
      * `checkSelfPermission` adalah cara yang benar untuk mengeceknya.
      */
     fun hasPermission(): Boolean = runCatching {
-        context.checkPermission(PERMISSION, context.packageName, context.packageName) ==
+        // PaketManager.checkPermission(perm, pkgName) — varian Context.checkPermission
+        // yang 3 argumen malah menerima pid/uid (Int), bukan nama paket.
+        context.packageManager.checkPermission(PERMISSION, context.packageName) ==
             PackageManager.PERMISSION_GRANTED
     }.getOrDefault(false)
 
@@ -258,25 +260,36 @@ class TermuxBridge(private val context: Context) {
      *    (dengan storage permission) bisa menulis ke path yang sama.
      */
     fun createOutputSink(tag: String = "arkacode"): OutputSink? = runCatching {
-        val downloads = android.provider.MediaStore.Downloads.getContentUri(
-            android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY,
-        )
         val name = "$tag-${System.currentTimeMillis()}.txt"
-        val values = android.content.ContentValues().apply {
-            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name)
-            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/plain")
-            put(
-                android.provider.MediaStore.MediaColumns.RELATIVE_PATH,
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val downloads = android.provider.MediaStore.Downloads.getContentUri(
+                android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY,
+            )
+            val values = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name)
+                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/plain")
+                put(
+                    android.provider.MediaStore.MediaColumns.RELATIVE_PATH,
+                    android.os.Environment.DIRECTORY_DOWNLOADS,
+                )
+            }
+            val uri = context.contentResolver.insert(downloads, values)
+                ?: return null
+            // Path filesystem yang setara — inilah yang ditulis Termux.
+            val file = File(android.os.Environment.getExternalStoragePublicDirectory(
+                android.os.Environment.DIRECTORY_DOWNLOADS,
+            ), name)
+            OutputSink(file = file, uri = uri)
+        } else {
+            // Android 9 dan lebih lama: belum ada koleksi Downloads di
+            // MediaStore — pakai berkas langsung di folder Download publik.
+            val dir = android.os.Environment.getExternalStoragePublicDirectory(
                 android.os.Environment.DIRECTORY_DOWNLOADS,
             )
+            if (!dir.isDirectory) return null
+            val file = File(dir, name)
+            OutputSink(file = file, uri = Uri.fromFile(file))
         }
-        val uri = context.contentResolver.insert(downloads, values)
-            ?: return null
-        // Path filesystem yang setara — inilah yang ditulis Termux.
-        val file = File(android.os.Environment.getExternalStoragePublicDirectory(
-            android.os.Environment.DIRECTORY_DOWNLOADS,
-        ), name)
-        OutputSink(file = file, uri = uri)
     }.getOrNull()
 
     /** Corong output: berkas di filesystem + URI MediaStore untuk dibaca app. */
