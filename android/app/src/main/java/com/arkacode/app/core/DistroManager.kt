@@ -566,11 +566,17 @@ class DistroManager(
                 if (!canonical.path.startsWith(root.path + File.separator)) continue
                 canonical.parentFile?.mkdirs()
                 canonical.outputStream().use { out -> zip.copyTo(out) }
-                // Zip tidak mempertahankan permission otomatis — ikuti bit dari
-                // external_attr seperti jalur tar. Tanpa ini semua binary 0644
-                // dan proot gagal exec: "'…/usr/bin/env' is not executable".
-                val mode = entry.externalAttr shr 16
-                if (mode and 0b001_001_001 != 0) runCatching { canonical.setExecutable(true, false) }
+                // Zip streaming (ZipInputStream) tidak mengekspos bit eksekusi
+                // entri — deteksi dari ISI file: binary ELF atau script
+                // bershebang memang harus bisa dieksekusi. Kalibrasi vs
+                // bootstrap Termux asli: 0 file ber-bit exec yang bukan
+                // ELF/shebang. Tanpa ini semua binary 0644 dan proot gagal
+                // exec: "'…/usr/bin/env' is not executable".
+                val head = ByteArray(4)
+                runCatching { canonical.inputStream().use { it.read(head) } }
+                val elf = head.contentEquals(byteArrayOf(0x7F, 0x45, 0x4C, 0x46))
+                val shebang = head[0] == '#'.code.toByte() && head[1] == '!'.code.toByte()
+                if (elf || shebang) runCatching { canonical.setExecutable(true, false) }
                 runCatching { canonical.setReadable(true, false) }
                 count++
                 if (count % 200 == 0) onProgress((count / 40).coerceAtMost(100))
