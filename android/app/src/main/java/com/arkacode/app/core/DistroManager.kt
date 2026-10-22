@@ -377,6 +377,14 @@ class DistroManager(
             // Termux memakai $PREFIX/home sebagai HOME.
             if (spec.extractDir.isNotEmpty()) {
                 File(rootfsDir, "${spec.extractDir}/home").mkdirs()
+                // apt Termux dibangun dengan Dir::Cache=/data/data/com.termux/cache/apt;
+                // di app asli Android membuat folder cache aplikasi sendiri, sedangkan
+                // rootfs hasil ekstrak zip tidak — tanpa ini "pkg install" gagal:
+                // "Archives directory .../cache/apt/archives/partial is missing".
+                val appDir = spec.extractDir.removeSuffix("/files/usr")
+                if (appDir != spec.extractDir) {
+                    File(rootfsDir, "$appDir/cache/apt/archives/partial").mkdirs()
+                }
             }
             File(rootfsDir, "root/.profile").writeText(
                 "export PATH=${guestPathValue()}\nexport PS1='\\$ '\\n",
@@ -593,10 +601,21 @@ class DistroManager(
      *    di dalam prefix Termux).
      *  - `target` = tujuan symlink. Termux menulisnya relatif terhadap
      *    direktori symlink (`dash←./bin/sh` -> `bin/sh` -> `dash`), tapi
-     *    beberapa entri lisensi menulisnya relatif terhadap prefix. Jadi
-     *    keduanya dicoba.
+     *    beberapa entri menulisnya absolut terhadap prefix. Jadi keduanya
+     *    dicoba — pilih yang BENAR-BENAR ADA.
+     *
+     * Dua jebakan yang ditemukan dari bootstrap asli (tanpa ini apt buntu,
+     * keyring `trusted.gpg.d` tak pernah terbentuk):
+     *  1. Target absolut yang di-resolve dulu relatif ke direktori link
+     *     menghasilkan path salah yang TETAP non-null (masih dalam root),
+     *     jadi fallback `?:` tidak pernah jalan dan exists() selalu gagal.
+     *  2. Rantai antar baris: `libxxhash.so←libxxhash.so.0` dieksekusi
+     *     sebelum `libxxhash.so.0←libxxhash.so.0.8.4` yang menciptakan
+     *     targetnya — makanya diulang sampai tidak ada progres.
+     * Target yang tak pernah ada tetap dilewati (hindari symlink sia-sia).
      */
     private fun applySymlinkManifest(manifest: String, root: File, baseDir: File) {
+        val pending = mutableListOf<Triple<String, File, File>>()
         manifest.lineSequence().forEach { line ->
             val parts = line.split('←')
             if (parts.size != 2) return@forEach
@@ -605,15 +624,26 @@ class DistroManager(
             if (target.isEmpty() || linkPath.isEmpty()) return@forEach
             val link = resolveGuestPath(root, baseDir, linkPath) ?: return@forEach
             val linkDir = link.parentFile ?: return@forEach
-            // Target harus benar-benar ada, kalau tidak symlink jadi sia-sia.
-            val resolved = resolveGuestPath(root, linkDir, target)
-                ?: resolveGuestPath(root, baseDir, target)
-                ?: return@forEach
-            if (!resolved.exists()) return@forEach
-            runCatching {
-                link.parentFile?.mkdirs()
-                link.delete()
-                Files.createSymbolicLink(Paths.get(link.absolutePath), Paths.get(target))
+            pending.add(Triple(target, link, linkDir))
+        }
+        var progress = true
+        while (progress) {
+            progress = false
+            val itr = pending.iterator()
+            while (itr.hasNext()) {
+                val (target, link, linkDir) = itr.next()
+                val exists = listOf(
+                    resolveGuestPath(root, linkDir, target),
+                    resolveGuestPath(root, baseDir, target),
+                ).any { it != null && it.exists() }
+                if (!exists) continue
+                runCatching {
+                    link.parentFile?.mkdirs()
+                    link.delete()
+                    Files.createSymbolicLink(Paths.get(link.absolutePath), Paths.get(target))
+                }
+                itr.remove()
+                progress = true
             }
         }
     }
