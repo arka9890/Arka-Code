@@ -654,6 +654,10 @@ class EngineManager(private val context: Context) {
         }
         runCatching { serverProcess?.destroyForcibly() }
         serverProcess = null
+        // proot yang di-SIGKILL tak sempat mematikan tracee di dalamnya —
+        // opencode jadi yatim, tetap menyajikan port, dan UI menganggap server
+        // hidup lagi (Stop → langsung kembali jalan). Reap sisa proses serve.
+        reapStrayServers()
         // Server yang hidup di Termux bukan proses milik app ini — matikan
         // best-effort dari dalam Termux (diam kalau izin/app tidak tersedia).
         // Tanpa ini pindah runtime Termux → proot tidak bisa lewat step 0.
