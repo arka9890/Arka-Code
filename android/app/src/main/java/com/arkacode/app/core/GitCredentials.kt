@@ -15,14 +15,14 @@ object GitCredentials {
     private const val CRED_PATH = "root/.git-credentials"
     private const val CONFIG_PATH = "root/.gitconfig"
 
-    private fun rootfsDir(context: Context): File =
-        File(File(context.filesDir, "distro"), "alpine")
-
-    /** Sinkronkan kredensial proot dengan [token] (kosong = cabut). */
-    fun sync(context: Context, token: String) {
+    /** Sinkronkan kredensial distro aktif ([spec]) dengan [token] (kosong = cabut). */
+    fun sync(context: Context, token: String, spec: DistroSpec) {
         runCatching {
-            val root = rootfsDir(context)
-            if (!File(root, "etc/alpine-release").isFile && !File(root, "bin/busybox").isFile) return
+            val dm = DistroManager(context, spec)
+            // Distro berbeda = rootfs berbeda; tanpa penanda terpasang tidak
+            // ada tempat menulis.
+            if (!dm.isInstalled()) return
+            val root = dm.rootfsDir
             val clean = token.trim()
             val cred = File(root, CRED_PATH)
             if (clean.isEmpty()) {

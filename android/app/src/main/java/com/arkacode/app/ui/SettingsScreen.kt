@@ -323,7 +323,7 @@ fun SettingsScreen(
                                 scope.launch {
                                     withContext(Dispatchers.IO) {
                                         SecureStore.setGitPat(context, gitPat)
-                                        GitCredentials.sync(context, gitPat)
+                                        GitCredentials.sync(context, gitPat, eng.distroSpec)
                                     }
                                     notice = I18n.s.gitPatSaved
                                 }
@@ -332,7 +332,7 @@ fun SettingsScreen(
                                 scope.launch {
                                     withContext(Dispatchers.IO) {
                                         SecureStore.setGitPat(context, "")
-                                        GitCredentials.sync(context, "")
+                                        GitCredentials.sync(context, "", eng.distroSpec)
                                     }
                                     gitPat = ""
                                     notice = I18n.s.gitPatDeleted
