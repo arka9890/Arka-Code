@@ -109,6 +109,10 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     // Ekstraksi tar.gz rootfs Alpine (jalur hot: runtime DistroManager).
     implementation(libs.commons.compress)
+    // Pendamping RUNTIME commons-compress (opsional di POM-nya): tar.xz dipakai
+    // semua preset proot-distro, tar.zst untuk URL kustom.
+    implementation(libs.xz)
+    implementation(libs.zstd.jni)
     debugImplementation(libs.compose.ui.tooling)
     testImplementation("junit:junit:4.13.2")
 }

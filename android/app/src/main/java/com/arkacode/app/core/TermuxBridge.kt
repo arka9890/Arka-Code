@@ -19,8 +19,10 @@ import java.io.File
  * How-to Termux menjalankan command dari app lain:
  *  - Intent `com.termux.RUN_COMMAND` ke service `com.termux.app.RunCommandService`.
  *  - App kita harus memegang permission `com.termux.permission.RUN_COMMAND`.
- *    Permission itu diberikan oleh Termux lewat daftar "allow app" (bukan
- *    dialog sistem biasa), jadi [requestPermissionIntent] membuka layar itu.
+ *    Termux mengiklankannya dengan protectionLevel "dangerous": butuh deklarasi
+ *    uses-permission di manifest APP + persetujuan dialog sistem (runtime
+ *    request di DistroScreen). [requestPermissionIntent] lalu mendaftarkan
+ *    app ke allowlist "allow external apps" Termux.
  *  - Output command TIDAK bisa diambil langsung dari intent — Termux
  *    menulisnya ke sesinya sendiri. Karena itu [run] meminta output ditulis
  *    ke berkas di folder Download, lalu app membacanya kembali lewat URI SAF
@@ -68,8 +70,8 @@ class TermuxBridge(private val context: Context) {
     /**
      * Apakah app kita memegang izin `com.termux.permission.RUN_COMMAND`?
      *
-     * Termux memberi izin ini lewat daftar "allow app"-nya sendiri, jadi
-     * `checkSelfPermission` adalah cara yang benar untuk mengeceknya.
+     * Permission-nya diiklankannya "dangerous" di manifest Termux, jadi hanya
+     * GRANTED setelah user menyetujui dialog sistem (izin runtime).
      */
     fun hasPermission(): Boolean = runCatching {
         // PaketManager.checkPermission(perm, pkgName) — varian Context.checkPermission
@@ -88,7 +90,7 @@ class TermuxBridge(private val context: Context) {
             !hasPermission() -> Status(
                 true, false,
                 "Termux terpasang, tapi app ini belum diizinkan menjalankan script. " +
-                    "Tekan \" Izinkan di Termux\" lalu setujui di aplikasi Termux.",
+                    "Tekan \"Izinkan di Termux\" lalu setujui dialog sistemnya.",
             )
             else -> Status(true, true, "Termux siap dipakai sebagai runtime command.")
         }

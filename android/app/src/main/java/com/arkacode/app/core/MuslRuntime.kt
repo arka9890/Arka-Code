@@ -288,7 +288,11 @@ object MuslRuntime {
             while (true) {
                 val entry = tar.nextEntry ?: break
                 if (!entry.isFile) continue
-                out[entry.name] = tar.readBytes()
+                // apk Alpine menyimpan nama entri berawalan "./" (mis.
+                // "./lib/ld-musl-aarch64.so.1") — normalisasi agar kunci
+                // cocok dengan path yang dicari PACKAGES; tanpa ini runtime
+                // musl tidak pernah terpasang di distro non-Alpine.
+                out[entry.name.removePrefix("./")] = tar.readBytes()
             }
         }
         return out

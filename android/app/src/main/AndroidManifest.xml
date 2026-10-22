@@ -3,6 +3,11 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Dibutuhkan untuk mengirim intent RUN_COMMAND ke Termux (runtime
+         alternatif: server opencode berjalan di aplikasi Termux). Tanpa izin
+         ini packageManager.checkPermission selalu DENIED sehingga semua
+         command ke Termux diblokir sebelum dimulai. -->
+    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />

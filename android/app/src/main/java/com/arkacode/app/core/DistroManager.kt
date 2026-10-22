@@ -206,7 +206,7 @@ class DistroManager(
                 else -> spec.rootfsUrls(abi)
             }.distinct()
 
-            var lastError: Exception? = null
+            var lastError: Throwable? = null
             for ((index, url) in candidates.withIndex()) {
                 val outcome = tryInstall(url, index, candidates.size, onProgress)
                 // tryInstall mengembalikan null kalau BERHASIL.
@@ -229,7 +229,7 @@ class DistroManager(
             // Jangan ditelan: kalau tidak, tombol "Batal" tidak bisa
             // menghentikan unduhan yang sedang jalan.
             throw e
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Result.failure(e)
         }
     }
@@ -243,7 +243,7 @@ class DistroManager(
         index: Int,
         total: Int,
         onProgress: (Int, String) -> Unit,
-    ): Exception? {
+    ): Throwable? {
         return try {
             onProgress(0, "Mengunduh ${url.substringAfterLast('/')} (${index + 1}/${total})…")
             val tmpArchive = File(tmpDir, "rootfs" + archiveSuffix(url))
@@ -288,7 +288,9 @@ class DistroManager(
             null
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e // dibatalkan user -> jangan dianggap kegagalan biasa
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            // "Error"-level (mis. NoClassDefFoundError) juga dilaporkan sebagai
+            // kegagalan biasa supaya kartu pemasangan menampilkannya, bukan crash.
             e
         }
     }
@@ -417,6 +419,9 @@ class DistroManager(
         if (!loaderTarget.isFile) {
             runCatching { loader.copyTo(loaderTarget, overwrite = true) }
         }
+        // Salinan copyTo default 0644 — kernel menuntut bit +x pada file
+        // PT_INTERP, tanpa itu exec gagal "Permission denied".
+        if (!loaderTarget.canExecute()) runCatching { loaderTarget.setExecutable(true, false) }
         val libcTarget = File(libDir, "libc.musl-$arch.so.1")
         if (!libcTarget.exists()) {
             runCatching {

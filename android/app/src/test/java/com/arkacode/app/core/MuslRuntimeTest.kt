@@ -55,10 +55,13 @@ class MuslRuntimeTest {
 
     @Test
     fun `isi member data terbaca sebagai daftar berkas`() {
+        // Nama entri di apk asli Alpine berawalan "./" — parser harus
+        // menormalkannya (regresi: runtime musl tidak terpasang di distro
+        // non-Alpine karena kunci tidak cocok).
         val bytes = apk(
             gzipMember(".SIGN.RSA.key" to ByteArray(10)),
             gzipMember(".PKGINFO" to ByteArray(20)),
-            gzipMember("usr/lib/libgcc_s.so.1" to ByteArray(30) { 7 }),
+            gzipMember("./usr/lib/libgcc_s.so.1" to ByteArray(30) { 7 }),
         )
         val files = MuslRuntime.apkDataFiles(bytes)
         assertEquals(1, files.size)
@@ -72,10 +75,10 @@ class MuslRuntimeTest {
             gzipMember(".SIGN.RSA.key" to ByteArray(10)),
             gzipMember(".PKGINFO" to ByteArray(20)),
             gzipMember(
-                "lib/ld-musl-aarch64.so.1" to byteArrayOf(
+                "./lib/ld-musl-aarch64.so.1" to byteArrayOf(
                     0x7f, 'E'.code.toByte(), 'L'.code.toByte(), 'F'.code.toByte(),
                 ),
-                "usr/lib/libstdc++.so.6.0.32" to ByteArray(40) { 1 },
+                "./usr/lib/libstdc++.so.6.0.32" to ByteArray(40) { 1 },
             ),
         )
         val files = MuslRuntime.apkDataFiles(bytes)

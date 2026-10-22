@@ -1,5 +1,8 @@
 package com.arkacode.app.ui
 
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -35,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.arkacode.app.core.DistroCatalog
 import com.arkacode.app.core.DistroManager
 import com.arkacode.app.core.DistroSpec
@@ -143,8 +147,41 @@ fun DistroScreen(
         refresh()
     }
 
+    /**
+     * Dialog izin runtime untuk `com.termux.permission.RUN_COMMAND`.
+     *
+     * Permission itu diiklankan Termux dengan protectionLevel "dangerous",
+     * jadi manifest saja tidak cukup — user harus menyetujui dialog sistem.
+     * Kalau dialognya disetujui, lanjut mendaftarkan app ke allowlist Termux
+     * (langkah izin kedua) dan segarkan status.
+     */
+    val termuxPermLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            termux.requestPermissionIntent()?.let { runCatching { context.startActivity(it) } }
+        }
+        refresh()
+    }
+
+    /** Tombol "Izinkan di Termux": minta izin runtime dulu, lalu allowlist Termux. */
+    fun requestTermuxPermission() {
+        val granted = ContextCompat.checkSelfPermission(context, TermuxBridge.PERMISSION) ==
+            PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            termux.requestPermissionIntent()?.let { runCatching { context.startActivity(it) } }
+            refresh()
+        } else {
+            termuxPermLauncher.launch(TermuxBridge.PERMISSION)
+        }
+    }
+
     fun selectRuntime(mode: RuntimeMode) {
         runtime = mode
+        // Terapkan langsung ke engine yang hidup — tanpa ini mode baru baru
+        // berlaku setelah app direstart (negara runtime hanya dipulihkan
+        // sekali saat EngineScreen dibuka).
+        engine.runtimeMode = mode
         scope.launch {
             withContext(Dispatchers.IO) { runCatching { uiPrefs.setRuntimeMode(mode) } }
         }
@@ -328,11 +365,9 @@ fun DistroScreen(
                                 },
                             )
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                TextButton(onClick = {
-                                    termux.requestPermissionIntent()?.let {
-                                        runCatching { context.startActivity(it) }
-                                    }
-                                }) { Text(I18n.s.distroTermuxAllow) }
+                                TextButton(onClick = { requestTermuxPermission() }) {
+                                    Text(I18n.s.distroTermuxAllow)
+                                }
                                 TextButton(onClick = {
                                     termux.openTermuxIntent()?.let {
                                         runCatching { context.startActivity(it) }
