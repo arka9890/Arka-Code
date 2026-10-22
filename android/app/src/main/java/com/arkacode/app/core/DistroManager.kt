@@ -848,6 +848,9 @@ class DistroManager(
         val argv = mutableListOf(
             proot.absolutePath,
             "--kill-on-exit",
+            // SELinux Android melarang link() untuk app biasa; proot
+            // menerjemahkannya jadi symlink agar dpkg/apt bisa jalan.
+            "--link2symlink",
             "-0",
             "-r", rootfsDir.absolutePath,
             "-w", workdir,

@@ -188,6 +188,9 @@ class EngineManager(private val context: Context) {
         return mutableListOf(
             proot.absolutePath,
             "--kill-on-exit",
+            // SELinux Android melarang link() untuk app biasa (sejak Android 6);
+            // tanpa ini dpkg/apt di rootfs Debian gagal membuat backup status.
+            "--link2symlink",
             "-0",
             "-r", distro.rootfsDir.absolutePath,
             "-w", "/root/workspace",
@@ -752,6 +755,9 @@ class EngineManager(private val context: Context) {
         return mutableListOf(
             proot.absolutePath,
             "--kill-on-exit",
+            // SELinux Android melarang link() untuk app biasa (sejak Android 6);
+            // tanpa ini dpkg/apt di rootfs Debian gagal membuat backup status.
+            "--link2symlink",
             "-0",
             "-r", distro.rootfsDir.absolutePath,
             "-w", "/root/workspace",
