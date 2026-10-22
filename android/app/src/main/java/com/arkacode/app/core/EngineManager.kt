@@ -185,7 +185,7 @@ class EngineManager(private val context: Context) {
         val loader = distro.loaderBinary() ?: return null
         if (!distro.isInstalled()) return null
         val pw = workspaceDir
-        return mutableListOf(
+        val argv = mutableListOf(
             proot.absolutePath,
             "--kill-on-exit",
             // SELinux Android melarang link() untuk app biasa (sejak Android 6);
@@ -201,6 +201,10 @@ class EngineManager(private val context: Context) {
             "-b", "${pw.absolutePath}:/root/workspace",
             "-b", "${engineDir.absolutePath}:/opt/arkacode",
         )
+        // Distro layout Termux (built-in) berjalan sebagai user biasa seperti app
+        // Termux asli — pkg/apt di dalamnya memblokir root, fake-root malah mematikannya.
+        if (distro.spec.layout == RootfsLayout.TERMUX_PREFIX) argv.remove("-0")
+        return argv
     }
 
     private fun guestEnvTail(): List<String> {
@@ -752,7 +756,7 @@ class EngineManager(private val context: Context) {
         val loader = distro.loaderBinary() ?: return null
         if (!distro.isInstalled()) return null
         val pw = workspaceDir
-        return mutableListOf(
+        val argv = mutableListOf(
             proot.absolutePath,
             "--kill-on-exit",
             // SELinux Android melarang link() untuk app biasa (sejak Android 6);
@@ -768,7 +772,11 @@ class EngineManager(private val context: Context) {
             "-b", "${pw.absolutePath}:/root/workspace",
             "-b", "${engineDir.absolutePath}:/opt/arkacode",
             "-b", "${opencodeDataDir.absolutePath}:/opt/arkacode-data",
-        ) + distro.extraBindArgs() + mutableListOf(
+        )
+        // Distro layout Termux (built-in) berjalan sebagai user biasa seperti app
+        // Termux asli — pkg/apt di dalamnya memblokir root, fake-root malah mematikannya.
+        if (distro.spec.layout == RootfsLayout.TERMUX_PREFIX) argv.remove("-0")
+        return argv + distro.extraBindArgs() + mutableListOf(
             distro.guestEnvPath(),
             "-i",
             "HOME=${distro.guestHomePath()}",

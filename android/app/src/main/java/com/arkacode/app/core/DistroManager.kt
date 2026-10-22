@@ -859,6 +859,9 @@ class DistroManager(
             "-b", "/sys",
             "-b", rootfsDir.absolutePath + "/tmp:/dev/shm",
         )
+        // Distro layout Termux (built-in) berjalan sebagai user biasa seperti app
+        // Termux asli — pkg/apt di dalamnya memblokir root, fake-root malah mematikannya.
+        if (spec.layout == RootfsLayout.TERMUX_PREFIX) argv.remove("-0")
         // Termux memakai bionic Android: binary-nya butuh /system (linker64)
         // dan /apex (pustaka runtime). Hanya di-bind kalau memang ada.
         argv += extraBindArgs()
