@@ -94,6 +94,7 @@ class EngineManager(private val context: Context) {
 
     private val engineDir: File get() = File(context.filesDir, "engine").apply { mkdirs() }
     private val workspaceDir: File get() = File(context.filesDir, "workspace").apply { mkdirs() }
+    private val opencodeDataDir: File get() = File(context.filesDir, "opencode-data").apply { mkdirs() }
 
     fun binaryFile(): File = File(engineDir, "opencode")
     fun logFile(): File = File(engineDir, "serve.log")
@@ -553,9 +554,11 @@ class EngineManager(private val context: Context) {
             )
         }
         logFile().appendText("\n===== serve start (termux) port=$port =====\n")
+        val quotedPw = password.replace("'", "'\\''")
+        // shortcut: log serve mode Termux hanya bisa dibaca dari app Termux sendiri, bukan dari UI app
         val started = termux.startBackground(
-            command = "OPENCODE_SERVER_PASSWORD='$password' opencode serve --port $port " +
-                "--hostname ${EngineConfig.DEFAULT_HOST} >> '${logFile().absolutePath}' 2>&1",
+            command = "mkdir -p \"\$HOME/.arkacode\" && OPENCODE_SERVER_PASSWORD='$quotedPw' opencode serve --port $port " +
+                "--hostname ${EngineConfig.DEFAULT_HOST} >> \"\$HOME/.arkacode/serve.log\" 2>&1",
         )
         if (!started) {
             return Result.failure(IllegalStateException("Termux menolak menjalankan perintah."))
@@ -592,6 +595,13 @@ class EngineManager(private val context: Context) {
             // opencode musl-dinamis tidak bisa start tanpa itu di distro glibc.
             distro.ensureMuslRuntime()
             ensureGuestLibs().getOrThrow()
+            // Migrasi sekali-jalan: data session lama (per-rootfs) disalin ke folder bersama agar sinkron antar distro.
+            val sharedData = File(opencodeDataDir, "opencode")
+            val oldData = File(distro.rootfsDir, distro.guestHomePath().removePrefix("/") + "/.local/share/opencode")
+            if (!sharedData.walkTopDown().any { it.isFile && it.name.endsWith(".db") } && oldData.isDirectory) {
+                oldData.copyRecursively(sharedData, overwrite = true)
+                logFile().appendText("===== migrate opencode data: ${oldData.absolutePath} -> ${sharedData.absolutePath} =====\n")
+            }
             workDir.mkdirs()
             logFile().appendText("\n===== serve start port=$port =====\n")
 
@@ -747,10 +757,12 @@ class EngineManager(private val context: Context) {
             "-b", distro.rootfsDir.absolutePath + "/tmp:/dev/shm",
             "-b", "${pw.absolutePath}:/root/workspace",
             "-b", "${engineDir.absolutePath}:/opt/arkacode",
+            "-b", "${opencodeDataDir.absolutePath}:/opt/arkacode-data",
         ) + distro.extraBindArgs() + mutableListOf(
             distro.guestEnvPath(),
             "-i",
             "HOME=${distro.guestHomePath()}",
+            "XDG_DATA_HOME=/opt/arkacode-data",
             "PATH=${distro.guestPathValue()}",
             "TERM=xterm-256color",
             "LANG=C.UTF-8",

@@ -57,10 +57,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.arkacode.app.core.DistroCatalog
+import com.arkacode.app.core.DistroManager
 import com.arkacode.app.core.EngineConfig
 import com.arkacode.app.core.EngineManager
 import com.arkacode.app.core.EngineService
 import com.arkacode.app.core.SessionRunRegistry
+import com.arkacode.app.core.TermuxBridge
 import com.arkacode.app.net.OpenCodeClient
 import com.arkacode.app.net.ChatSession
 import kotlinx.coroutines.Dispatchers
@@ -75,7 +77,7 @@ private const val DEFAULT_PASSWORD = "arkacode-local"
 private sealed interface Screen {
     data class Boot(val attempt: Int) : Screen
     data class Ready(val version: String) : Screen
-    data object Stopped : Screen
+    data object PickDistro : Screen
 }
 
 /**
@@ -95,7 +97,6 @@ fun EngineScreen(
     var port by remember { mutableStateOf(EngineConfig.DEFAULT_PORT) }
     var password by remember { mutableStateOf(DEFAULT_PASSWORD) }
     var credsReady by remember { mutableStateOf(false) }
-    var runtime by remember { mutableStateOf(com.arkacode.app.core.RuntimeMode.PROOT) }
 
     // Muat kredensial tersimpan (bila ada) sebelum pipeline jalan.
     LaunchedEffect(Unit) {
@@ -115,10 +116,9 @@ fun EngineScreen(
             runCatching { uiPrefs.runtimeMode() }.getOrNull()?.let { engine.runtimeMode = it }
             runCatching { uiPrefs.distroId() }.getOrNull()?.let { engine.setDistro(DistroCatalog.byId(it)) }
         }
-        runtime = engine.runtimeMode
     }
 
-    var screen by remember { mutableStateOf<Screen>(Screen.Boot(0)) }
+    var screen by remember { mutableStateOf<Screen>(Screen.PickDistro) }
     var chatTarget by remember { mutableStateOf<ChatSession?>(null) }
     var showProviders by remember { mutableStateOf(false) }
     var showCaps by remember { mutableStateOf(false) }
@@ -250,36 +250,24 @@ fun EngineScreen(
         }
     }
 
-    /** Boot ulang pipeline; dipakai setelah distro/runtime diganti di pengaturan. */
-    fun rebootEngine() {
-        runtime = engine.runtimeMode
-        scope.launch {
-            withContext(Dispatchers.IO) { runCatching { engine.stopServer() } }
-            // pkill di Termux asinkron — tunggu (maks ±5 dtk) sampai server lama
-            // benar-benar mati, kalau tidak pipeline step 0 menganggapnya hidup.
-            var attempts = 10
-            while (attempts-- > 0 && runCatching {
-                    OpenCodeClient(port = port, password = password).health()
-                }.getOrNull()?.healthy == true) {
-                kotlinx.coroutines.delay(500)
-            }
-            screen = Screen.Boot(0)
+    // pkill di Termux asinkron — tunggu (maks ±5 dtk) sampai server lama
+    // benar-benar mati, kalau tidak layar berikutnya menganggapnya hidup.
+    suspend fun awaitServerDeath() {
+        var attempts = 10
+        while (attempts-- > 0 && runCatching {
+                OpenCodeClient(port = port, password = password).health()
+            }.getOrNull()?.healthy == true) {
+            kotlinx.coroutines.delay(500)
         }
     }
 
-    /**
-     * Ganti runtime (distro proot / Termux). startNow=true dipakai saat server
-     * jalan: server dimatikan dulu, kalau tidak pipeline step 0 melihat server
-     * lama "masih hidup" dan langsung masuk dengan runtime/distro lama.
-     */
-    fun switchRuntime(mode: com.arkacode.app.core.RuntimeMode, startNow: Boolean) {
-        if (mode == runtime) return
-        runtime = mode
-        engine.runtimeMode = mode
-        scope.launch(Dispatchers.IO) {
-            runCatching { uiPrefs.setRuntimeMode(mode) }
+    /** Boot ulang pipeline; dipakai setelah distro/runtime diganti di pengaturan. */
+    fun rebootEngine() {
+        scope.launch {
+            withContext(Dispatchers.IO) { runCatching { engine.stopServer() } }
+            awaitServerDeath()
+            screen = Screen.Boot(0)
         }
-        if (startNow) rebootEngine()
     }
 
     when (val s = screen) {
@@ -356,9 +344,10 @@ fun EngineScreen(
                     onStop = {
                         scope.launch {
                             withContext(Dispatchers.IO) { engine.stopServer() }
+                            awaitServerDeath()
                             lines = lines + "[${stamp()}] server dihentikan."
                             showSettings = false
-                            screen = Screen.Stopped
+                            screen = Screen.PickDistro
                         }
                     },
                     onRestartEngine = ::restartEngine,
@@ -389,17 +378,14 @@ fun EngineScreen(
                     version = s.version,
                     port = port,
                     password = password,
-                    engine = engine,
-                    runtimeMode = runtime,
-                    onSwitchRuntime = { switchRuntime(it, startNow = true) },
                     isDark = darkTheme,
                     onToggleTheme = onToggleTheme,
-
                     onStop = {
                         scope.launch {
                             withContext(Dispatchers.IO) { engine.stopServer() }
+                            awaitServerDeath()
                             lines = lines + "[${stamp()}] server dihentikan."
-                            screen = Screen.Stopped
+                            screen = Screen.PickDistro
                         }
                     },
                     onOpenChat = { chatTarget = it },
@@ -411,7 +397,18 @@ fun EngineScreen(
                 )
             }
         }
-        Screen.Stopped -> {
+        Screen.PickDistro -> {
+            // Warm reopen: server masih jalan dari sesi sebelumnya → langsung
+            // masuk tanpa melewati pemilihan distro.
+            LaunchedEffect(credsReady) {
+                if (credsReady) {
+                    val h = runCatching {
+                        OpenCodeClient(port = port, password = password).health()
+                    }.getOrNull()
+                    if (h?.healthy == true) screen = Screen.Ready(h.version)
+                }
+            }
+            // FGS + notifikasi status bar tidak relevan selama server mati.
             LaunchedEffect(Unit) { EngineService.stop(context) }
             if (showDistro) {
                 BackHandler(enabled = true) { showDistro = false }
@@ -422,9 +419,31 @@ fun EngineScreen(
                 )
                 return
             }
-            val listState = rememberLazyListState()
-            LaunchedEffect(lines.size) {
-                if (lines.isNotEmpty()) listState.scrollToItem(lines.size - 1)
+            /**
+             * Pilih runtime/distro lalu boot. Instalasi rootfs on-demand sudah
+             * ditangani pipeline (step 1), jadi cukup set pilihan di sini.
+             */
+            fun pick(mode: com.arkacode.app.core.RuntimeMode, spec: com.arkacode.app.core.DistroSpec?) {
+                engine.runtimeMode = mode
+                if (spec != null) engine.setDistro(spec)
+                scope.launch(Dispatchers.IO) {
+                    runCatching { uiPrefs.setRuntimeMode(mode) }
+                    if (spec != null) runCatching { uiPrefs.setDistroId(spec.id) }
+                }
+                screen = Screen.Boot(0)
+            }
+            val termux = remember { TermuxBridge(context) }
+            var installedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+            var termuxReady by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) {
+                val (ids, ready) = withContext(Dispatchers.IO) {
+                    val installed = DistroCatalog.PRESETS
+                        .filter { DistroManager(context, it).isInstalled() }
+                        .mapTo(mutableSetOf()) { it.id }
+                    installed to termux.status().ready
+                }
+                installedIds = ids
+                termuxReady = ready
             }
             Column(
                 Modifier
@@ -434,52 +453,31 @@ fun EngineScreen(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                ClayHeader(title = I18n.s.stoppedTitle, leading = { ClayIconBadge(Icons.Default.Build) })
-                // Mode runtime bisa diganti sebelum server dinyalakan lagi.
-                RuntimeChips(
-                    runtime = runtime,
-                    distroLabel = engine.distroSpec.label,
-                    onSwitch = { switchRuntime(it, startNow = false) },
+                ClayHeader(
+                    title = I18n.s.pickDistroTitle,
+                    leading = { ClayIconBadge(Icons.Default.Build) },
+                    actions = {
+                        TextButton(onClick = { showDistro = true }) { Text(I18n.s.distroOpen) }
+                    },
                 )
-                TextButton(onClick = { showDistro = true }) { Text(I18n.s.distroOpen) }
-                ClayCard {
-                    OutlinedTextField(
-                        value = port.toString(),
-                        onValueChange = { port = it.filter(Char::isDigit).take(5).toIntOrNull() ?: port },
-                        label = { Text(I18n.s.port) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = password,
-                        onValueChange = { password = it },
-                        label = { Text(I18n.s.serverPassword) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Button(
-                        onClick = {
-                            scope.launch {
-                                withContext(Dispatchers.IO) {
-                                    runCatching { com.arkacode.app.core.SecureStore.save(context, port, password) }
-                                }
-                                screen = Screen.Boot(0)
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text(I18n.s.saveStart) }
-                }
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    items(lines, key = { it }) { line ->
-                        Text(line, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    item(key = "termux-app") {
+                        PickEntry(
+                            title = I18n.s.distroRuntimeTermux,
+                            status = if (termuxReady) I18n.s.distroInstalled else I18n.s.distroNotInstalled,
+                            onClick = { pick(com.arkacode.app.core.RuntimeMode.TERMUX, null) },
+                        )
+                    }
+                    items(DistroCatalog.PRESETS, key = { it.id }) { spec ->
+                        PickEntry(
+                            title = spec.label,
+                            status = if (spec.id in installedIds) {
+                                I18n.s.distroInstalled
+                            } else {
+                                I18n.s.distroNotInstalled
+                            },
+                            onClick = { pick(com.arkacode.app.core.RuntimeMode.PROOT, spec) },
+                        )
                     }
                 }
             }
@@ -487,28 +485,29 @@ fun EngineScreen(
     }
 }
 
-/** Pilihan runtime di layar depan: distro proot aktif vs Termux. */
+/** Satu entri di layar pilih distro: label + status terpasang; ketuk = pilih & boot. */
 @Composable
-private fun RuntimeChips(
-    runtime: com.arkacode.app.core.RuntimeMode,
-    distroLabel: String,
-    onSwitch: (com.arkacode.app.core.RuntimeMode) -> Unit,
+private fun PickEntry(
+    title: String,
+    status: String,
+    onClick: () -> Unit,
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ClayCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
     ) {
-        Text(I18n.s.distroRuntime, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-        ClayPill(
-            text = distroLabel,
-            selected = runtime == com.arkacode.app.core.RuntimeMode.PROOT,
-            onClick = { onSwitch(com.arkacode.app.core.RuntimeMode.PROOT) },
-        )
-        ClayPill(
-            text = "Termux",
-            selected = runtime == com.arkacode.app.core.RuntimeMode.TERMUX,
-            onClick = { onSwitch(com.arkacode.app.core.RuntimeMode.TERMUX) },
-        )
+        Row(
+            Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(title, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text(
+                status,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -567,9 +566,6 @@ private fun ReadyScreen(
     version: String,
     port: Int,
     password: String,
-    engine: EngineManager,
-    runtimeMode: com.arkacode.app.core.RuntimeMode,
-    onSwitchRuntime: (com.arkacode.app.core.RuntimeMode) -> Unit,
     onStop: () -> Unit,
     onOpenChat: (ChatSession) -> Unit,
     onNewSession: (ChatSession) -> Unit,
@@ -626,12 +622,6 @@ private fun ReadyScreen(
                 TextButton(onClick = onToggleTheme) { Text(if (isDark) "\u2600\uFE0F" else "\uD83C\uDF19") }
                 OutlinedButton(onClick = onStop) { Text(I18n.s.stop) }
             },
-        )
-        // Pilihan runtime di layar depan: distro proot aktif vs Termux.
-        RuntimeChips(
-            runtime = runtimeMode,
-            distroLabel = engine.distroSpec.label,
-            onSwitch = onSwitchRuntime,
         )
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(I18n.s.sessionsCount(sessions?.size ?: 0), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
