@@ -739,7 +739,7 @@ class EngineManager(private val context: Context) {
         put(listOf("XAI_API_KEY"), "xai")
         // Provider kustom OpenAI-compatible: opencode.json menunjuk {env:ARKACODE_<ID>_API_KEY}.
         runCatching {
-            OpenCodeConfig.listCustom(context).forEach { p ->
+            OpenCodeConfig.listCustom(context, distroSpec).forEach { p ->
                 val v = SecureStore.getAuth(context, OpenCodeConfig.keyName(p.id))
                 if (!v.isNullOrBlank()) out[OpenCodeConfig.envVar(p.id)] = v
             }

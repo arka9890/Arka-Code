@@ -329,6 +329,7 @@ fun EngineScreen(
                 ProvidersScreen(
                     port = port,
                     password = password,
+                    distroSpec = engine.distroSpec,
                     onBack = { showProviders = false },
                     onRestartEngine = ::restartEngine,
                 )

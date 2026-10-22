@@ -49,6 +49,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.arkacode.app.core.DistroSpec
 import com.arkacode.app.core.OpenCodeConfig
 import com.arkacode.app.core.SecureStore
 import com.arkacode.app.net.ModelInfo
@@ -81,6 +82,7 @@ private val ENV_HINTS = mapOf(
 fun ProvidersScreen(
     port: Int,
     password: String,
+    distroSpec: DistroSpec,
     onBack: () -> Unit,
     onRestartEngine: (() -> Unit)? = null,
 ) {
@@ -119,9 +121,9 @@ fun ProvidersScreen(
                     if (!has.isNullOrBlank()) p.id else null
                 }.toSet()
             }
-            distroReady = withContext(Dispatchers.IO) { OpenCodeConfig.isAvailable(context) }
+            distroReady = withContext(Dispatchers.IO) { OpenCodeConfig.isAvailable(context, distroSpec) }
             custom = withContext(Dispatchers.IO) {
-                runCatching { OpenCodeConfig.listCustom(context) }.getOrDefault(emptyList())
+                runCatching { OpenCodeConfig.listCustom(context, distroSpec) }.getOrDefault(emptyList())
             }
             loading = false
         }
@@ -130,11 +132,11 @@ fun ProvidersScreen(
     fun saveCustom(name: String, baseUrl: String, modelsCsv: String, apiKey: String) {
         scope.launch {
             val ok = withContext(Dispatchers.IO) {
-                val id = OpenCodeConfig.makeId(name, OpenCodeConfig.existingIds(context))
+                val id = OpenCodeConfig.makeId(name, OpenCodeConfig.existingIds(context, distroSpec))
                 val models = modelsCsv.split(',', '\n').map { it.trim() }.filter { it.isNotEmpty() }
-                OpenCodeConfig.upsert(context, id, name, baseUrl, models, newKey = apiKey.ifBlank { null })
+                OpenCodeConfig.upsert(context, distroSpec, id, name, baseUrl, models, newKey = apiKey.ifBlank { null })
             }
-            custom = withContext(Dispatchers.IO) { OpenCodeConfig.listCustom(context) }
+            custom = withContext(Dispatchers.IO) { OpenCodeConfig.listCustom(context, distroSpec) }
             if (ok) {
                 showAddCustom = false
                 notice = I18n.s.customSavedNotice
@@ -298,10 +300,10 @@ fun ProvidersScreen(
                                         TextButton(onClick = {
                                             scope.launch {
                                                 val ok = withContext(Dispatchers.IO) {
-                                                    OpenCodeConfig.remove(context, p.id)
+                                                    OpenCodeConfig.remove(context, distroSpec, p.id)
                                                 }
                                                 custom = withContext(Dispatchers.IO) {
-                                                    OpenCodeConfig.listCustom(context)
+                                                    OpenCodeConfig.listCustom(context, distroSpec)
                                                 }
                                                 notice = if (ok) I18n.s.customDeletedNotice(p.name)
                                                 else I18n.s.customSaveFailed

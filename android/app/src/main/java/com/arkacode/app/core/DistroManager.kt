@@ -367,7 +367,7 @@ class DistroManager(
             val hosts = "127.0.0.1 localhost\n::1 localhost\n"
             val etcDirs = buildList {
                 add(File(rootfsDir, "etc"))
-                if (spec.extractDir.isNotEmpty()) add(File(rootfsDir, "$spec.extractDir/etc"))
+                if (spec.extractDir.isNotEmpty()) add(File(rootfsDir, "${spec.extractDir}/etc"))
             }
             etcDirs.forEach { dir ->
                 dir.mkdirs()
@@ -376,7 +376,7 @@ class DistroManager(
             }
             // Termux memakai $PREFIX/home sebagai HOME.
             if (spec.extractDir.isNotEmpty()) {
-                File(rootfsDir, "$spec.extractDir/home").mkdirs()
+                File(rootfsDir, "${spec.extractDir}/home").mkdirs()
             }
             File(rootfsDir, "root/.profile").writeText(
                 "export PATH=${guestPathValue()}\nexport PS1='\\$ '\\n",

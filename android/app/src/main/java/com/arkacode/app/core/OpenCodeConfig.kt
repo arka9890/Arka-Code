@@ -39,15 +39,15 @@ object OpenCodeConfig {
         val hasKey: Boolean,
     )
 
-    private fun rootfsDir(context: Context): File =
-        File(File(context.filesDir, "distro"), "alpine")
+    private fun rootfsDir(context: Context, spec: DistroSpec): File =
+        DistroManager(context, spec).rootfsDir
 
-    fun configFile(context: Context): File = File(rootfsDir(context), CONFIG_REL)
+    fun configFile(context: Context, spec: DistroSpec): File =
+        File(rootfsDir(context, spec), CONFIG_REL)
 
-    /** True bila rootsf Alpine sudah terpasang (tanpa itu tak ada tempat menulis config). */
-    fun isAvailable(context: Context): Boolean =
-        File(rootfsDir(context), "etc/alpine-release").isFile ||
-            File(rootfsDir(context), "bin/busybox").isFile
+    /** True bila distro aktif sudah terpasang (tanpa itu tak ada tempat menulis config). */
+    fun isAvailable(context: Context, spec: DistroSpec): Boolean =
+        DistroManager(context, spec).isInstalled()
 
     /** Nama env deterministik tempat menyuntik API key provider kustom. */
     fun envVar(id: String): String =
@@ -72,8 +72,8 @@ object OpenCodeConfig {
      * `null` = berkas ada tapi tidak bisa diparse (JSON tidak valid). Pemanggil
      * yang menulis HARUS membatalkan agar config user tidak tertimpa.
      */
-    private fun readRoot(context: Context): JsonObject? {
-        val f = configFile(context)
+    private fun readRoot(context: Context, spec: DistroSpec): JsonObject? {
+        val f = configFile(context, spec)
         if (!f.isFile) return JsonObject(emptyMap())
         val raw = runCatching { f.readText() }.getOrDefault("")
         if (raw.isBlank()) return JsonObject(emptyMap())
@@ -81,14 +81,14 @@ object OpenCodeConfig {
     }
 
     /** Id yang tak boleh dipakai provider kustom (bawaan opencode + yang ada di config). */
-    fun existingIds(context: Context): Set<String> {
-        val fromConfig = (readRoot(context)?.get("provider") as? JsonObject)?.keys.orEmpty()
+    fun existingIds(context: Context, spec: DistroSpec): Set<String> {
+        val fromConfig = (readRoot(context, spec)?.get("provider") as? JsonObject)?.keys.orEmpty()
         return fromConfig + BUILTIN_IDS
     }
 
     /** Daftar provider kustom (npm openai-compatible) yang tertulis di config. */
-    fun listCustom(context: Context): List<CustomProvider> {
-        val providers = readRoot(context)?.get("provider") as? JsonObject ?: return emptyList()
+    fun listCustom(context: Context, spec: DistroSpec): List<CustomProvider> {
+        val providers = readRoot(context, spec)?.get("provider") as? JsonObject ?: return emptyList()
         return providers.entries.mapNotNull { (id, el) ->
             val o = el as? JsonObject ?: return@mapNotNull null
             if ((o["npm"] as? JsonPrimitive)?.contentOrNull != NPM) return@mapNotNull null
@@ -111,6 +111,7 @@ object OpenCodeConfig {
      */
     fun upsert(
         context: Context,
+        spec: DistroSpec,
         id: String,
         name: String,
         baseUrl: String,
@@ -118,7 +119,7 @@ object OpenCodeConfig {
         newKey: String? = null,
         deleteKey: Boolean = false,
     ): Boolean {
-        val current = readRoot(context) ?: return false
+        val current = readRoot(context, spec) ?: return false
         when {
             deleteKey -> SecureStore.setAuth(context, keyName(id), "")
             !newKey.isNullOrBlank() -> SecureStore.setAuth(context, keyName(id), newKey)
@@ -145,22 +146,22 @@ object OpenCodeConfig {
         }
         root["provider"] = JsonObject(providers)
         if (root["\$schema"] == null) root["\$schema"] = JsonPrimitive(SCHEMA)
-        return write(context, JsonObject(root))
+        return write(context, spec, JsonObject(root))
     }
 
     /** Hapus provider kustom + API key tersimpannya. @return false bila gagal. */
-    fun remove(context: Context, id: String): Boolean {
-        val current = readRoot(context) ?: return false
+    fun remove(context: Context, spec: DistroSpec, id: String): Boolean {
+        val current = readRoot(context, spec) ?: return false
         SecureStore.setAuth(context, keyName(id), "")
         val root = current.toMutableMap()
         val providers = ((root["provider"] as? JsonObject) ?: return true).toMutableMap()
         providers.remove(id)
         if (providers.isEmpty()) root.remove("provider") else root["provider"] = JsonObject(providers)
-        return write(context, JsonObject(root))
+        return write(context, spec, JsonObject(root))
     }
 
-    private fun write(context: Context, root: JsonObject): Boolean = runCatching {
-        val f = configFile(context)
+    private fun write(context: Context, spec: DistroSpec, root: JsonObject): Boolean = runCatching {
+        val f = configFile(context, spec)
         f.parentFile?.mkdirs()
         f.writeText(json.encodeToString(JsonObject.serializer(), root) + "\n")
         true
