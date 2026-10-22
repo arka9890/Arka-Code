@@ -644,6 +644,10 @@ class EngineManager(private val context: Context) {
         }
         runCatching { serverProcess?.destroyForcibly() }
         serverProcess = null
+        // Server yang hidup di Termux bukan proses milik app ini — matikan
+        // best-effort dari dalam Termux (diam kalau izin/app tidak tersedia).
+        // Tanpa ini pindah runtime Termux → proot tidak bisa lewat step 0.
+        runCatching { termux.startBackground("pkill -f 'opencode serve' 2>/dev/null || true") }
         runCatching { logFile().appendText("===== serve stop =====\n") }
     }
 

@@ -262,18 +262,22 @@ fun EngineScreen(
         scope.launch(Dispatchers.IO) {
             runCatching { uiPrefs.setRuntimeMode(mode) }
         }
-        if (startNow) {
-            scope.launch {
-                withContext(Dispatchers.IO) { runCatching { engine.stopServer() } }
-                screen = Screen.Boot(0)
-            }
-        }
+        if (startNow) rebootEngine()
     }
 
     /** Boot ulang pipeline; dipakai setelah distro/runtime diganti di pengaturan. */
     fun rebootEngine() {
+        runtime = engine.runtimeMode
         scope.launch {
             withContext(Dispatchers.IO) { runCatching { engine.stopServer() } }
+            // pkill di Termux asinkron — tunggu (maks ±5 dtk) sampai server lama
+            // benar-benar mati, kalau tidak pipeline step 0 menganggapnya hidup.
+            var attempts = 10
+            while (attempts-- > 0 && runCatching {
+                    OpenCodeClient(port = port, password = password).health()
+                }.getOrNull()?.healthy == true) {
+                kotlinx.coroutines.delay(500)
+            }
             screen = Screen.Boot(0)
         }
     }
