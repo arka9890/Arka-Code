@@ -113,6 +113,9 @@ class EngineManager(private val context: Context) {
      */
     suspend fun version(): String? = withContext(Dispatchers.IO) {
         runCatching {
+            // Rootfs yang baru dipasang belum punya loader musl — pasang dulu
+            // (idempoten & cepat) supaya --version jalan di semua distro.
+            if (distro.isInstalled()) distro.ensureMuslRuntime()
             val out = runOneShot(listOf("/opt/arkacode/opencode", "--version")).trim()
             // Output v2 bisa berbentuk "opencode v2.0.31"; ambil hanya inti semver-nya
             // agar tampilan & perbandingan versi konsisten.
@@ -334,7 +337,11 @@ class EngineManager(private val context: Context) {
     suspend fun checkUpdate(): Update? = withContext(Dispatchers.IO) {
         runCatching {
             val latest = EngineRelease.latestVersion(distro.abi) ?: return@runCatching null
-            val current = version() ?: EngineConfig.VERSION
+            // Versi tidak terbaca (mis. rootfs belum siap) BUKAN berarti jadul:
+            // memperlakukannya jadul membuat unduhan ±60MB tiap boot yang selalu
+            // gagal verifikasi lalu di-revert (bidang pesan user: "download
+            // opencode terus").
+            val current = version() ?: return@runCatching null
             val hasUpdate = EngineRelease.isNewer(latest, current)
             val integrities = if (hasUpdate) {
                 runCatching { EngineRelease.latestRelease(distro.abi)?.integrity }.getOrNull() ?: emptyMap()

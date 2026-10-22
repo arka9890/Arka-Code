@@ -95,6 +95,7 @@ fun EngineScreen(
     var port by remember { mutableStateOf(EngineConfig.DEFAULT_PORT) }
     var password by remember { mutableStateOf(DEFAULT_PASSWORD) }
     var credsReady by remember { mutableStateOf(false) }
+    var runtime by remember { mutableStateOf(com.arkacode.app.core.RuntimeMode.PROOT) }
 
     // Muat kredensial tersimpan (bila ada) sebelum pipeline jalan.
     LaunchedEffect(Unit) {
@@ -114,6 +115,7 @@ fun EngineScreen(
             runCatching { uiPrefs.runtimeMode() }.getOrNull()?.let { engine.runtimeMode = it }
             runCatching { uiPrefs.distroId() }.getOrNull()?.let { engine.setDistro(DistroCatalog.byId(it)) }
         }
+        runtime = engine.runtimeMode
     }
 
     var screen by remember { mutableStateOf<Screen>(Screen.Boot(0)) }
@@ -177,55 +179,59 @@ fun EngineScreen(
                     log("distro siap (${distro.message}).")
                 }
             }
-            // 2. Engine
-            if (!withContext(Dispatchers.IO) { engine.isDownloaded() }) {
-                log("mengunduh opencode terbaru (±60 MB)…")
-                var last = -1
-                val v = withContext(Dispatchers.IO) {
-                    engine.installLatest(
-                        onProgress = { p ->
-                            if (p / 10 != last / 10) {
-                                last = p
-                                scope.launch { log("engine $p%") }
-                            }
-                        },
-                        onLog = { m -> scope.launch { log(m) } },
-                    )
-                }.getOrThrow()
-                log("engine: $v")
-            } else {
-                val v = withContext(Dispatchers.IO) { engine.version() } ?: "siap"
-                log("engine sudah ada ($v).")
-                // 2b. Auto-update engine (server belum jalan → aman ganti binary).
-                val auto = withContext(Dispatchers.IO) {
-                    runCatching { uiPrefs.autoUpdateEnabled() }.getOrDefault(true)
-                }
-                if (auto) {
-                    log("cek pembaruan opencode…")
-                    val u = withContext(Dispatchers.IO) { engine.checkUpdate() }
-                    when {
-                        u == null -> log("gagal cek pembaruan (offline?).")
-                        !u.hasUpdate -> log("opencode sudah terbaru (${u.latest}).")
-                        else -> {
-                            log("pembaruan tersedia: ${u.current ?: "?"} → ${u.latest}. Mengunduh…")
-                            var last = -1
-                            withContext(Dispatchers.IO) {
-                                engine.applyUpdate(
-                                    u,
-                                    onProgress = { p ->
-                                        if (p / 10 != last / 10) {
-                                            last = p
-                                            scope.launch { log("update $p%") }
-                                        }
-                                    },
-                                    onLog = { m -> scope.launch { log(m) } },
-                                )
-                            }.onSuccess { log("opencode diperbarui ke ${u.latest}.") }
-                                .onFailure { log("pembaruan gagal: ${it.message ?: "?"} - lanjut versi lama.") }
-                        }
+            // 2. Engine — runtime proot saja. Di runtime Termux opencode hidup
+            //    di aplikasi Termux; binary unduhan ini tidak pernah dipakai,
+            //    jadi lewati unduhan & cek pembaruan.
+            if (engine.runtimeMode != com.arkacode.app.core.RuntimeMode.TERMUX) {
+                if (!withContext(Dispatchers.IO) { engine.isDownloaded() }) {
+                    log("mengunduh opencode terbaru (±60 MB)…")
+                    var last = -1
+                    val v = withContext(Dispatchers.IO) {
+                        engine.installLatest(
+                            onProgress = { p ->
+                                if (p / 10 != last / 10) {
+                                    last = p
+                                    scope.launch { log("engine $p%") }
+                                }
+                            },
+                            onLog = { m -> scope.launch { log(m) } },
+                        )
+                    }.getOrThrow()
+                    log("engine: $v")
+                } else {
+                    val v = withContext(Dispatchers.IO) { engine.version() } ?: "siap"
+                    log("engine sudah ada ($v).")
+                    // 2b. Auto-update engine (server belum jalan → aman ganti binary).
+                    val auto = withContext(Dispatchers.IO) {
+                        runCatching { uiPrefs.autoUpdateEnabled() }.getOrDefault(true)
                     }
-                    withContext(Dispatchers.IO) {
-                        runCatching { uiPrefs.setLastUpdateCheck(System.currentTimeMillis()) }
+                    if (auto) {
+                        log("cek pembaruan opencode…")
+                        val u = withContext(Dispatchers.IO) { engine.checkUpdate() }
+                        when {
+                            u == null -> log("cek pembaruan dilewati (offline / versi engine belum terbaca).")
+                            !u.hasUpdate -> log("opencode sudah terbaru (${u.latest}).")
+                            else -> {
+                                log("pembaruan tersedia: ${u.current ?: "?"} → ${u.latest}. Mengunduh…")
+                                var last = -1
+                                withContext(Dispatchers.IO) {
+                                    engine.applyUpdate(
+                                        u,
+                                        onProgress = { p ->
+                                            if (p / 10 != last / 10) {
+                                                last = p
+                                                scope.launch { log("update $p%") }
+                                            }
+                                        },
+                                        onLog = { m -> scope.launch { log(m) } },
+                                    )
+                                }.onSuccess { log("opencode diperbarui ke ${u.latest}.") }
+                                    .onFailure { log("pembaruan gagal: ${it.message ?: "?"} - lanjut versi lama.") }
+                            }
+                        }
+                        withContext(Dispatchers.IO) {
+                            runCatching { uiPrefs.setLastUpdateCheck(System.currentTimeMillis()) }
+                        }
                     }
                 }
             }
@@ -241,6 +247,34 @@ fun EngineScreen(
             failMsg = msg
         } finally {
             working = false
+        }
+    }
+
+    /**
+     * Ganti runtime (distro proot / Termux). startNow=true dipakai saat server
+     * jalan: server dimatikan dulu, kalau tidak pipeline step 0 melihat server
+     * lama "masih hidup" dan langsung masuk dengan runtime/distro lama.
+     */
+    fun switchRuntime(mode: com.arkacode.app.core.RuntimeMode, startNow: Boolean) {
+        if (mode == runtime) return
+        runtime = mode
+        engine.runtimeMode = mode
+        scope.launch(Dispatchers.IO) {
+            runCatching { uiPrefs.setRuntimeMode(mode) }
+        }
+        if (startNow) {
+            scope.launch {
+                withContext(Dispatchers.IO) { runCatching { engine.stopServer() } }
+                screen = Screen.Boot(0)
+            }
+        }
+    }
+
+    /** Boot ulang pipeline; dipakai setelah distro/runtime diganti di pengaturan. */
+    fun rebootEngine() {
+        scope.launch {
+            withContext(Dispatchers.IO) { runCatching { engine.stopServer() } }
+            screen = Screen.Boot(0)
         }
     }
 
@@ -329,7 +363,7 @@ fun EngineScreen(
                 DistroScreen(
                     engine = engine,
                     onBack = { showDistro = false },
-                    onRuntimeChanged = { /* pipeline dijalankan ulang oleh user dari Settings */ },
+                    onRuntimeChanged = { showDistro = false; rebootEngine() },
                 )
             } else if (showBuddy) {
                 BuddyScreen(client = chatClient, runs = runs, onBack = { showBuddy = false })
@@ -352,6 +386,8 @@ fun EngineScreen(
                     port = port,
                     password = password,
                     engine = engine,
+                    runtimeMode = runtime,
+                    onSwitchRuntime = { switchRuntime(it, startNow = true) },
                     isDark = darkTheme,
                     onToggleTheme = onToggleTheme,
 
@@ -373,6 +409,15 @@ fun EngineScreen(
         }
         Screen.Stopped -> {
             LaunchedEffect(Unit) { EngineService.stop(context) }
+            if (showDistro) {
+                BackHandler(enabled = true) { showDistro = false }
+                DistroScreen(
+                    engine = engine,
+                    onBack = { showDistro = false },
+                    onRuntimeChanged = { showDistro = false; rebootEngine() },
+                )
+                return
+            }
             val listState = rememberLazyListState()
             LaunchedEffect(lines.size) {
                 if (lines.isNotEmpty()) listState.scrollToItem(lines.size - 1)
@@ -386,6 +431,13 @@ fun EngineScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 ClayHeader(title = I18n.s.stoppedTitle, leading = { ClayIconBadge(Icons.Default.Build) })
+                // Mode runtime bisa diganti sebelum server dinyalakan lagi.
+                RuntimeChips(
+                    runtime = runtime,
+                    distroLabel = engine.distroSpec.label,
+                    onSwitch = { switchRuntime(it, startNow = false) },
+                )
+                TextButton(onClick = { showDistro = true }) { Text(I18n.s.distroOpen) }
                 ClayCard {
                     OutlinedTextField(
                         value = port.toString(),
@@ -428,6 +480,29 @@ fun EngineScreen(
                 }
             }
         }
+    }
+}
+
+/** Pilihan runtime di layar depan: distro proot aktif vs Termux. */
+@Composable
+private fun RuntimeChips(
+    runtime: com.arkacode.app.core.RuntimeMode,
+    distroLabel: String,
+    onSwitch: (com.arkacode.app.core.RuntimeMode) -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(I18n.s.distroRuntime, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+        ClayPill(
+            text = distroLabel,
+            selected = runtime == com.arkacode.app.core.RuntimeMode.PROOT,
+        ) { onSwitch(com.arkacode.app.core.RuntimeMode.PROOT) }
+        ClayPill(
+            text = "Termux",
+            selected = runtime == com.arkacode.app.core.RuntimeMode.TERMUX,
+        ) { onSwitch(com.arkacode.app.core.RuntimeMode.TERMUX) }
     }
 }
 
@@ -487,6 +562,8 @@ private fun ReadyScreen(
     port: Int,
     password: String,
     engine: EngineManager,
+    runtimeMode: com.arkacode.app.core.RuntimeMode,
+    onSwitchRuntime: (com.arkacode.app.core.RuntimeMode) -> Unit,
     onStop: () -> Unit,
     onOpenChat: (ChatSession) -> Unit,
     onNewSession: (ChatSession) -> Unit,
@@ -543,6 +620,12 @@ private fun ReadyScreen(
                 TextButton(onClick = onToggleTheme) { Text(if (isDark) "\u2600\uFE0F" else "\uD83C\uDF19") }
                 OutlinedButton(onClick = onStop) { Text(I18n.s.stop) }
             },
+        )
+        // Pilihan runtime di layar depan: distro proot aktif vs Termux.
+        RuntimeChips(
+            runtime = runtimeMode,
+            distroLabel = engine.distroSpec.label,
+            onSwitch = onSwitchRuntime,
         )
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(I18n.s.sessionsCount(sessions?.size ?: 0), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
