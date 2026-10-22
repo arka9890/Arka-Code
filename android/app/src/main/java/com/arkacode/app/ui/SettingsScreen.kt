@@ -17,6 +17,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -39,6 +41,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.arkacode.app.core.EngineManager
 import com.arkacode.app.core.EngineRelease
@@ -62,6 +65,7 @@ fun SettingsScreen(
     onOpenDistro: (() -> Unit)? = null,
     engine: EngineManager? = null,
     onRestartEngine: (() -> Unit)? = null,
+    onPasswordSaved: ((Int, String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -70,6 +74,7 @@ fun SettingsScreen(
 
     var currentPort by remember { mutableStateOf(port) }
     var currentPassword by remember { mutableStateOf(password) }
+    var pwVisible by remember { mutableStateOf(false) }
     var gitPat by remember { mutableStateOf("") }
     var notice by remember { mutableStateOf<String?>(null) }
     var showIntegrationsSheet by remember { mutableStateOf(false) }
@@ -174,7 +179,19 @@ fun SettingsScreen(
                             onValueChange = { currentPassword = it },
                             label = { Text(I18n.s.serverPassword) },
                             singleLine = true,
-                            visualTransformation = PasswordVisualTransformation(),
+                            visualTransformation = if (pwVisible) {
+                                VisualTransformation.None
+                            } else {
+                                PasswordVisualTransformation()
+                            },
+                            trailingIcon = {
+                                IconButton(onClick = { pwVisible = !pwVisible }) {
+                                    Icon(
+                                        if (pwVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                        contentDescription = if (pwVisible) I18n.s.hidePassword else I18n.s.showPassword,
+                                    )
+                                }
+                            },
                             modifier = Modifier.fillMaxWidth(),
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -183,7 +200,18 @@ fun SettingsScreen(
                                     withContext(Dispatchers.IO) {
                                         SecureStore.save(context, currentPort, currentPassword)
                                     }
+                                    val changed = currentPort != port || currentPassword != password
                                     notice = I18n.s.serverSaved
+                                    if (changed) {
+                                        // onPasswordSaved sudah sekalian stop+restart
+                                        // (lihat EngineScreen); fallback restart-only
+                                        // bila caller tidak menyediakan callback.
+                                        if (onPasswordSaved != null) {
+                                            onPasswordSaved(currentPort, currentPassword)
+                                        } else {
+                                            onRestartEngine?.invoke()
+                                        }
+                                    }
                                 }
                             }) { Text(I18n.s.saveKey) }
                             onStop?.let { stop -> TextButton(onClick = stop) { Text(I18n.s.stop) } }

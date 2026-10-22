@@ -285,11 +285,16 @@ fun EngineScreen(
         }
         is Screen.Ready -> {
             // Kredensial OAuth/API key baru hanya dibaca server saat proses start
-            // ulang. Kembalikan ke pipeline Boot: ia yang sudah menangani
-            // stop → start → health. Memasuki branch Boot itu sendiri sudah
-            // memicu ulang LaunchedEffect pipeline, jadi attempt tidak perlu naik.
+            // ulang. Matikan server lama DULU sebelum masuk Boot: pipeline punya
+            // jalan pintas "server masih sehat → langsung masuk" dan
+            // startServerInProot early-return bila prosesnya masih hidup, jadi
+            // tanpa stop, "restart" hanya ilusi — kredensial lama tetap dipakai.
             fun restartEngine() {
-                screen = Screen.Boot(0)
+                scope.launch {
+                    withContext(Dispatchers.IO) { runCatching { engine.stopServer() } }
+                    awaitServerDeath()
+                    screen = Screen.Boot(0)
+                }
             }
             val target = chatTarget
             val chatClient = remember(port, password) { OpenCodeClient(port = port, password = password) }
@@ -352,6 +357,19 @@ fun EngineScreen(
                         }
                     },
                     onRestartEngine = ::restartEngine,
+                    onPasswordSaved = { p, pw ->
+                        // Stop dengan kredensial LAMA dulu (state port/password
+                        // belum berubah) supaya awaitServerDeath mendeteksi
+                        // kematian server dengan benar; baru ganti kredensial
+                        // → Boot → server spawn ulang dengan password/port baru.
+                        scope.launch {
+                            withContext(Dispatchers.IO) { runCatching { engine.stopServer() } }
+                            awaitServerDeath()
+                            port = p
+                            password = pw
+                            screen = Screen.Boot(0)
+                        }
+                    },
                 )
             } else if (showDistro) {
                 DistroScreen(
