@@ -360,6 +360,9 @@ class DistroManager(
         // NOTE F0: sinkron kredensial git (GitCredentials) dipasang di F2 bersama layar Providers/Auth.
         runCatching {
             File(rootfsDir, "root/workspace").mkdirs()
+            // tmp top-level untuk bind `-b <rootfs>/tmp:/dev/shm`; bootstrap
+            // zip Termux tidak memilikinya (proot: "can't sanitize binding").
+            File(rootfsDir, "tmp").mkdirs()
             val resolv = "nameserver 1.1.1.1\nnameserver 8.8.8.8\n"
             val hosts = "127.0.0.1 localhost\n::1 localhost\n"
             val etcDirs = buildList {
@@ -563,6 +566,12 @@ class DistroManager(
                 if (!canonical.path.startsWith(root.path + File.separator)) continue
                 canonical.parentFile?.mkdirs()
                 canonical.outputStream().use { out -> zip.copyTo(out) }
+                // Zip tidak mempertahankan permission otomatis — ikuti bit dari
+                // external_attr seperti jalur tar. Tanpa ini semua binary 0644
+                // dan proot gagal exec: "'…/usr/bin/env' is not executable".
+                val mode = entry.externalAttr shr 16
+                if (mode and 0b001_001_001 != 0) runCatching { canonical.setExecutable(true, false) }
+                runCatching { canonical.setReadable(true, false) }
                 count++
                 if (count % 200 == 0) onProgress((count / 40).coerceAtMost(100))
             }
