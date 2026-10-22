@@ -250,21 +250,6 @@ fun EngineScreen(
         }
     }
 
-    /**
-     * Ganti runtime (distro proot / Termux). startNow=true dipakai saat server
-     * jalan: server dimatikan dulu, kalau tidak pipeline step 0 melihat server
-     * lama "masih hidup" dan langsung masuk dengan runtime/distro lama.
-     */
-    fun switchRuntime(mode: com.arkacode.app.core.RuntimeMode, startNow: Boolean) {
-        if (mode == runtime) return
-        runtime = mode
-        engine.runtimeMode = mode
-        scope.launch(Dispatchers.IO) {
-            runCatching { uiPrefs.setRuntimeMode(mode) }
-        }
-        if (startNow) rebootEngine()
-    }
-
     /** Boot ulang pipeline; dipakai setelah distro/runtime diganti di pengaturan. */
     fun rebootEngine() {
         runtime = engine.runtimeMode
@@ -280,6 +265,21 @@ fun EngineScreen(
             }
             screen = Screen.Boot(0)
         }
+    }
+
+    /**
+     * Ganti runtime (distro proot / Termux). startNow=true dipakai saat server
+     * jalan: server dimatikan dulu, kalau tidak pipeline step 0 melihat server
+     * lama "masih hidup" dan langsung masuk dengan runtime/distro lama.
+     */
+    fun switchRuntime(mode: com.arkacode.app.core.RuntimeMode, startNow: Boolean) {
+        if (mode == runtime) return
+        runtime = mode
+        engine.runtimeMode = mode
+        scope.launch(Dispatchers.IO) {
+            runCatching { uiPrefs.setRuntimeMode(mode) }
+        }
+        if (startNow) rebootEngine()
     }
 
     when (val s = screen) {
@@ -502,11 +502,13 @@ private fun RuntimeChips(
         ClayPill(
             text = distroLabel,
             selected = runtime == com.arkacode.app.core.RuntimeMode.PROOT,
-        ) { onSwitch(com.arkacode.app.core.RuntimeMode.PROOT) }
+            onClick = { onSwitch(com.arkacode.app.core.RuntimeMode.PROOT) },
+        )
         ClayPill(
             text = "Termux",
             selected = runtime == com.arkacode.app.core.RuntimeMode.TERMUX,
-        ) { onSwitch(com.arkacode.app.core.RuntimeMode.TERMUX) }
+            onClick = { onSwitch(com.arkacode.app.core.RuntimeMode.TERMUX) },
+        )
     }
 }
 
