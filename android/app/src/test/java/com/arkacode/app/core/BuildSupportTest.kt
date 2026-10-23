@@ -24,6 +24,25 @@ class BuildSupportTest {
     }
 
     @Test
+    fun `proyek bersarang ditemukan sampai kedalaman 3 tingkat`() {
+        val root = tempRoot()
+        File(root, "Repo/android/gradlew").apply { parentFile.mkdirs(); writeText("") }
+        // level 4 (Repo/a/b/c/d) — di luar batas, tidak boleh muncul
+        File(root, "Deep/a/b/c/settings.gradle.kts").apply { parentFile.mkdirs(); writeText("") }
+        assertEquals(listOf("Repo/android"), BuildSupport.findProjects(root))
+    }
+
+    @Test
+    fun `folder tersembunyi dan build dilewati`() {
+        val root = tempRoot()
+        File(root, ".git/sub/gradlew").apply { parentFile.mkdirs(); writeText("") }
+        File(root, "Repo/node_modules/x/gradlew").apply { parentFile.mkdirs(); writeText("") }
+        File(root, "Repo/build/gen/gradlew").apply { parentFile.mkdirs(); writeText("") }
+        File(root, "Repo/app/settings.gradle.kts").apply { parentFile.mkdirs(); writeText("") }
+        assertEquals(listOf("Repo/app"), BuildSupport.findProjects(root))
+    }
+
+    @Test
     fun `quote aman untuk kutip dan spasi`() {
         assertEquals("'it'\\''s a \"test\"'", BuildSupport.shQuote("it's a \"test\""))
         assertEquals("'plain'", BuildSupport.shQuote("plain"))

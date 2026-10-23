@@ -13,19 +13,38 @@ import java.util.Locale
  */
 object BuildSupport {
 
-    /** Nama direktori di root yang merupakan proyek Gradle, urut alfabet. */
+    private const val MAX_PROJ_LEVELS = 3
+    private val PRUNE_DIRS = setOf("build", "node_modules")
+
+    /**
+     * Path relatif [root] yang merupakan proyek Gradle (berisi `gradlew` ATAU
+     * `settings.gradle*`), urut alfabet. Anak root = tanpa prefix; bersarang
+     * pakai `/` (mis. `Arka-Code/android`). Telusuri maksimal3 tingkat —
+     * shortcut: proyek lebih dalam dari itu tidak terdeteksi, naikkan
+     * MAX_PROJ_LEVELS kalau ada kasus nyata. Folder tersembunyi, `build`,
+     * dan `node_modules` dilewati agar .git ratusan ribu file tak ditelusuri.
+     */
     fun findProjects(root: File): List<String> {
-        val dirs = root.listFiles() ?: return emptyList()
-        return dirs
-            .filter { d ->
-                d.isDirectory && (
-                    File(d, "gradlew").isFile ||
-                        File(d, "settings.gradle").isFile ||
-                        File(d, "settings.gradle.kts").isFile
-                    )
+        val out = mutableListOf<String>()
+
+        fun isProject(d: File) =
+            File(d, "gradlew").isFile ||
+                File(d, "settings.gradle").isFile ||
+                File(d, "settings.gradle.kts").isFile
+
+        fun walk(dir: File, relPath: String, level: Int) {
+            dir.listFiles()?.forEach { kid ->
+                if (!kid.isDirectory) return@forEach
+                val n = kid.name
+                if (n.startsWith('.') || n in PRUNE_DIRS) return@forEach
+                val rel = if (relPath.isEmpty()) n else "$relPath/$n"
+                if (isProject(kid)) out.add(rel)
+                else if (level + 1 < MAX_PROJ_LEVELS) walk(kid, rel, level + 1)
             }
-            .map { it.name }
-            .sorted()
+        }
+
+        walk(root, "", 0)
+        return out.sorted()
     }
 
     /** Bungkus string dengan kutip tunggal untuk sh: `'` → `'\''`. */

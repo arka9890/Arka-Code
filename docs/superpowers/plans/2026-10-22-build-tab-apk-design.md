@@ -12,8 +12,11 @@ baca) → setelah sukses, pasang APK lewat **ADB wireless** (pair kode + install
 
 ## Cakupan
 
-- Folder proyek = subfolder `/root/workspace` yang mengandung `gradlew` atau
-  `settings.gradle*`. Import dari storage HP (SAF): **tidak**, menyusul.
+- Folder proyek = isi `/root/workspace` (telusur maksimal 3 tingkat, mis.
+  `Arka-Code/android`; folder tersembunyi/`build`/`node_modules` dilewati)
+  yang mengandung `gradlew` atau `settings.gradle*` — path relatif yang
+  dipakai untuk `cd`, log, dan nama APK. Import dari storage HP (SAF):
+  **tidak**, menyusul.
 - Build hanya `assembleDebug`, satu proyek berjalan pada satu waktu.
 - Termux mode: tidak didukung — probe gagal, alasan tampil di log.
 - ADB: pairing butuh kode 6 digit dari layar HP (diinput di tab, sekali per
