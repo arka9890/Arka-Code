@@ -33,8 +33,19 @@ baca) → setelah sukses, pasang APK lewat **ADB wireless** (pair kode + install
    - **Log pane**: tail incremental dari file (baca offset tiap ~500 ms) —
      dipakai log setup dan build.
    - Seksi **Hasil**: glob `**/build/outputs/apk/debug/*.apk` setelah exit 0.
+     - **Keluaran otomatis ke folder SAF**: sekali pilih tujuan
+       (`OpenDocumentTree` + `takePersistableUriPermission`, tree Uri disimpan
+       bersama preferensi ADB) → setiap build sukses APK **dicopy** otomatis ke
+       sana via `DocumentsContract.createDocument` + `openOutputStream`
+       (nama unik `<proyek>-debug-<timestamp>.apk`, tanpa logika bentrok).
+       Aslinya tetap di `build/outputs` (dipakai gradle + tombol Pasang ADB).
+       Kalau belum pilih tujuan → tombol "Pilih folder tujuan" di seksi ini;
+       kalau grant gagal/revoked → pesan di log pane + tombol pilih ulang.
+       Salin di `Dispatchers.IO`, baris mulai/selesai masuk log pane.
    - Seksi **ADB**: input IP (auto-probe `ip -4 addr show wlan0`, bisa diedit),
-     port pair, kode pairing, port connect; tombol `Pasang`.
+     port pair, kode pairing, port connect; tombol `Pasang`. **Peringatan di
+     tombol**: memasang APK atas app yang sedang berjalan = proses app dibunuh
+     Android → sesi AI ikut terputus (terbukti saat spike).
 3. **ToolchainSetup.kt** — skrip bash embedded sebagai string Kotlin → ditulis
    ke `/root/workspace/.arka/setup-toolchain.sh` (tulis langsung dari sisi app)
    → `ExecRunner.run("bash ...", timeout 30 m)` dengan log ke file.
@@ -47,6 +58,9 @@ baca) → setelah sukses, pasang APK lewat **ADB wireless** (pair kode + install
      disamakan dengan `gradle/libs.versions.toml`), ekstrak, wrapper qemu
      (`qemu-x86_64-static -L /usr/x86_64-linux-gnu`), append
      `android.aapt2FromMavenOverride=...` ke `~/.gradle/gradle.properties`
+   - adb: **platform-tools resmi Google** (Debian `adb` tidak punya perintah
+     `pair`) → `/opt/android-sdk/platform-tools` + wrapper qemu + symlink
+     `/usr/local/bin/adb`
 4. **BuildRunner** — satu command lewat `ExecRunner.run`:
    ```
    cd '/root/workspace/<p>' && chmod +x gradlew ; \
@@ -64,8 +78,9 @@ baca) → setelah sukses, pasang APK lewat **ADB wireless** (pair kode + install
 ## Alur utama
 
 Buka tab → scan proyek → pilih → probe toolchain → (`Siapkan toolchain` bila
-perlu) → Build → log live → exit 0 → daftar APK muncul → isi ADB (pair sekali)
-→ Pasang → output adb tampil di log pane.
+perlu) → Build → log live → exit 0 → daftar APK muncul → **salin otomatis ke
+folder SAF** (sekali pilih tujuan) → isi ADB (pair sekali) → Pasang → output
+adb tampil di log pane.
 
 ## Risiko & validasi
 
