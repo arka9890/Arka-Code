@@ -1,5 +1,9 @@
 package com.arkacode.app.ui
 
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -34,6 +38,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.arkacode.app.core.BuildPrefs
 import com.arkacode.app.core.BuildSupport
 import com.arkacode.app.core.DistroManager
 import com.arkacode.app.core.EngineManager
@@ -42,6 +47,7 @@ import com.arkacode.app.core.ExecSettings
 import com.arkacode.app.core.TermuxBridge
 import com.arkacode.app.core.ToolchainSetup
 import com.arkacode.app.core.VirtualFs
+import com.arkacode.app.core.WorkspaceExport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -84,11 +90,13 @@ fun BuildScreen(
     val runner = remember {
         ExecRunner(context, DistroManager(context), engine.runtimeMode, TermuxBridge(context))
     }
+    val prefs = remember { BuildPrefs(context) }
 
     var projects by remember { mutableStateOf<List<String>>(emptyList()) }
     var selected by remember { mutableStateOf<String?>(null) }
     var runningBuild by remember { mutableStateOf(BuildState.running) }
     var setupRunning by remember { mutableStateOf(false) }
+    var safTree by remember { mutableStateOf<String?>(null) }
     var logPath by remember { mutableStateOf<File?>(null) }
     var status by remember { mutableStateOf<BuildSupport.ToolchainStatus?>(null) }
     var apks by remember { mutableStateOf<List<File>>(emptyList()) }
@@ -102,8 +110,32 @@ fun BuildScreen(
                     it.isFile && it.extension == "apk" &&
                         it.path.contains("build${File.separator}outputs${File.separator}apk")
                 }
+                .sortedByDescending { it.lastModified() }
                 .toList()
         }.getOrDefault(emptyList())
+    }
+
+    // Salin APK terbaru ke folder SAF pilihan (asli tetap — dibutuhkan gradle/ADB).
+    fun copyApkToSaf(apk: File) {
+        val tree = safTree ?: return
+        val proj = selected ?: return
+        val name = BuildSupport.apkOutName(proj, Date())
+        val lp = BuildState.lastLogPath
+        scope.launch {
+            val res = withContext(Dispatchers.IO) {
+                WorkspaceExport.copyToTree(context, Uri.parse(tree), apk, name)
+            }
+            val baris = res.fold(
+                onSuccess = { n -> I18n.s.buildCopied + n },
+                onFailure = { e -> I18n.s.buildCopyFailed + (e.message ?: e.javaClass.simpleName) },
+            )
+            if (lp != null) {
+                // Lewat file → pane (tail) ikut memperbarui + tetap terbaca AI.
+                withContext(Dispatchers.IO) { runCatching { lp.appendText("$baris\n") } }
+            } else {
+                logLines.add(baris)
+            }
+        }
     }
 
     fun scanProjects() {
@@ -154,7 +186,10 @@ fun BuildScreen(
                 withContext(Dispatchers.IO) {
                     runCatching { logFile.appendText(BuildSupport.summaryLine(res.exitCode)) }
                 }
-                if (res.exitCode == 0) withContext(Dispatchers.IO) { refreshApks() }
+                if (res.exitCode == 0) {
+                    withContext(Dispatchers.IO) { refreshApks() }
+                    apks.firstOrNull()?.let { copyApkToSaf(it) }
+                }
             } finally {
                 BuildState.running = false
                 BuildState.process = null
@@ -232,10 +267,29 @@ fun BuildScreen(
     LaunchedEffect(Unit) {
         scanProjects()
         logPath = BuildState.lastLogPath
+        safTree = runCatching { prefs.safTree() }.getOrNull()
         val r = runCatching {
             runner.run(ToolchainSetup.PROBE_CMD, settings = ExecSettings(timeoutMs = 15_000))
         }
         status = r.map { BuildSupport.parseToolchain(it.stdout) }.getOrNull()
+    }
+
+    val treeLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree(),
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                runCatching {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                    )
+                }
+                safTree = uri.toString()
+                withContext(Dispatchers.IO) { runCatching { prefs.setSafTree(safTree) } }
+                apks.firstOrNull()?.let { copyApkToSaf(it) }
+            }
+        }
     }
 
     // Tail file log aktif: baca penuh saat effect mulai (resume), lalu byte baru.
@@ -348,8 +402,7 @@ fun BuildScreen(
                                 Text(rel, style = MaterialTheme.typography.bodySmall)
                             }
                         }
-                        // Diaktifkan Task 6 (salin otomatis ke folder SAF).
-                        Button(onClick = {}, enabled = false) { Text(I18n.s.buildPickFolder) }
+                        Button(onClick = { treeLauncher.launch(null) }) { Text(I18n.s.buildPickFolder) }
                     }
                 }
 

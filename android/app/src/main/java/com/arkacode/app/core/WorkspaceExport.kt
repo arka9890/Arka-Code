@@ -2,9 +2,11 @@ package com.arkacode.app.core
 
 import android.content.Context
 import android.net.Uri
+import android.provider.DocumentsContract
 import com.arkacode.app.net.OpenCodeClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.io.IOException
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -57,5 +59,38 @@ object WorkspaceExport {
             }
         } ?: throw java.io.IOException("tidak bisa menulis zip")
         count
+    }
+
+    /**
+     * Salin satu berkas (APK) ke folder hasil OpenDocumentTree — dipakai tab
+     * Build untuk "salin otomatis ke folder tujuan" (asli tetap untuk gradle).
+     * Kegagalan (grant dicabut, folder hilang, dsb.) kembali sebagai
+     * [Result.failure] agar pemanggil bisa menampilkan pesan di log.
+     */
+    suspend fun copyToTree(
+        context: Context,
+        treeUri: Uri,
+        src: File,
+        newName: String,
+    ): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val resolver = context.contentResolver
+            val doc = DocumentsContract.createDocument(
+                resolver,
+                treeUri,
+                "application/vnd.android.package-archive",
+                newName,
+            ) ?: throw IOException("tidak bisa membuat dokumen di folder tujuan")
+            try {
+                resolver.openOutputStream(doc, "w")?.use { out ->
+                    src.inputStream().use { it.copyTo(out) }
+                } ?: throw IOException("tidak bisa menulis $newName")
+            } catch (e: Exception) {
+                // Copy gagal di tengah — buang parsial supaya tak meninggalkan APK rusak.
+                runCatching { DocumentsContract.deleteDocument(resolver, doc) }
+                throw e
+            }
+            newName
+        }
     }
 }
