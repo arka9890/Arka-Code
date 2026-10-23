@@ -105,13 +105,17 @@ object BuildSupport {
 
     private val SLUG = Regex("[^A-Za-z0-9._-]")
 
+    /** Nama file aman dari nama proyek (dipakai log & APK — satu sumber slug). */
+    fun slugify(s: String): String =
+        SLUG.replace(s, "-").replace(Regex("-+"), "-").trim('-').ifBlank { "apk" }
+
     /** Nama file APK hasil salin: `<slug>-debug-<yyyyMMdd-HHmmss>.apk`. */
     fun apkOutName(project: String, now: Date): String {
-        val slug = SLUG.replace(project, "-")
-            .replace(Regex("-+"), "-")
-            .trim('-')
-            .ifBlank { "apk" }
         val ts = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(now)
-        return "$slug-debug-$ts.apk"
+        return "${slugify(project)}-debug-$ts.apk"
     }
+
+    /** Baris ringkasan — ikut ditulis ke file log agar terbaca saat overlay dibuka ulang. */
+    fun summaryLine(exitCode: Int): String =
+        "=== exit $exitCode === " + (if (exitCode == 0) "BUILD SUKSES" else "BUILD GAGAL") + "\n"
 }

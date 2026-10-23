@@ -81,6 +81,7 @@ class ExecRunner(
         command: String,
         sessionId: String? = null,
         settings: ExecSettings = ExecSettings(),
+        onProcess: ((Process) -> Unit)? = null,
     ): ExecResult {
         if (command.isBlank()) throw IllegalStateException("command required")
         if (!isAllowed(command)) throw IllegalStateException("command not in allowlist")
@@ -95,7 +96,7 @@ class ExecRunner(
                 val fs = VirtualFs(context)
                 val prootWorkspace = runCatching { fs.prootWorkspaceDir() }.getOrNull()
                 val sessionWorkspace = sessionId?.let { runCatching { fs.workspaceDir(it) }.getOrNull() }
-                runProot(command, prootWorkspace, sessionWorkspace, settings)
+                runProot(command, prootWorkspace, sessionWorkspace, settings, onProcess)
             }
         }
     }
@@ -131,6 +132,7 @@ class ExecRunner(
         prootWorkspace: File?,
         sessionWorkspace: File?,
         settings: ExecSettings,
+        onProcess: ((Process) -> Unit)?,
     ): ExecResult {
         val argv = distro.buildProotCommand(command, prootWorkspace, sessionWorkspace, settings)
             ?: throw IllegalStateException("Distro ${distro.spec.label} belum siap (rootfs atau binary proot tidak lengkap).")
@@ -144,12 +146,12 @@ class ExecRunner(
             this["TMPDIR"] = context.cacheDir.absolutePath
         }
         val timeout = settings.timeoutMs.takeIf { it > 0 } ?: PROOT_DEFAULT_TIMEOUT_MS
-        return execute(builder, timeout)
+        return execute(builder, timeout, onProcess)
     }
 
     // ------------------------------------------------------------------ shared
 
-    private suspend fun execute(builder: ProcessBuilder, timeoutMs: Long): ExecResult {
+    private suspend fun execute(builder: ProcessBuilder, timeoutMs: Long, onProcess: ((Process) -> Unit)?): ExecResult {
         val process = withContext(Dispatchers.IO) {
             try {
                 builder.redirectErrorStream(false).start()
@@ -157,6 +159,7 @@ class ExecRunner(
                 throw IllegalStateException(e.message ?: "failed to start process")
             }
         }
+        onProcess?.invoke(process)
 
         val stdout = StringBuilder()
         val stderr = StringBuilder()

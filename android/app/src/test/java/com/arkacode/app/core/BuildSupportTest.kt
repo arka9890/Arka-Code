@@ -62,6 +62,12 @@ class BuildSupportTest {
     }
 
     @Test
+    fun `ringkasan exit ditulis dengan format tetap`() {
+        assertEquals("=== exit 0 === BUILD SUKSES\n", BuildSupport.summaryLine(0))
+        assertEquals("=== exit 1 === BUILD GAGAL\n", BuildSupport.summaryLine(1))
+    }
+
+    @Test
     fun `nama apk unik dan bersih`() {
         val now = SimpleDateFormat("yyyyMMdd-HHmmss").parse("20261023-101500")
         assertEquals("My-App-debug-20261023-101500.apk", BuildSupport.apkOutName("My App!", now))

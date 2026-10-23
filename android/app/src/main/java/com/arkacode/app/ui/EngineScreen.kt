@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.List
@@ -125,6 +126,7 @@ fun EngineScreen(
     var showSettings by remember { mutableStateOf(false) }
     var showBuddy by remember { mutableStateOf(false) }
     var showDistro by remember { mutableStateOf(false) }
+    var showBuild by remember { mutableStateOf(false) }
     var lines by remember { mutableStateOf(listOf<String>()) }
     var failMsg by remember { mutableStateOf<String?>(null) }
     var working by remember { mutableStateOf(false) }
@@ -314,13 +316,14 @@ fun EngineScreen(
                 // kalau pipeline selesai saat app di-background, jangan crash.
                 runCatching { EngineService.start(context, port, s.version) }
             }
-            BackHandler(enabled = showCaps || showProviders || showSettings || showBuddy || showDistro || target != null) {
+            BackHandler(enabled = showCaps || showProviders || showSettings || showBuddy || showDistro || showBuild || target != null) {
                 when {
                     showCaps -> showCaps = false
                     showProviders -> showProviders = false
                     showSettings -> showSettings = false
                     showBuddy -> showBuddy = false
                     showDistro -> showDistro = false
+                    showBuild -> showBuild = false
                     else -> chatTarget = null
                 }
             }
@@ -379,6 +382,12 @@ fun EngineScreen(
                 )
             } else if (showBuddy) {
                 BuddyScreen(client = chatClient, runs = runs, onBack = { showBuddy = false })
+            } else if (showBuild) {
+                BuildScreen(
+                    engine = engine,
+                    execScope = scope,
+                    onBack = { showBuild = false },
+                )
             } else if (target != null) {
                 ChatScreen(
                     sessionId = target.id,
@@ -413,6 +422,7 @@ fun EngineScreen(
                     onOpenCapabilities = { showCaps = true },
                     onOpenSettings = { showSettings = true },
                     onOpenBuddy = { showBuddy = true },
+                    onOpenBuild = { showBuild = true },
                 )
             }
         }
@@ -592,6 +602,7 @@ private fun ReadyScreen(
     onOpenCapabilities: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenBuddy: () -> Unit,
+    onOpenBuild: () -> Unit,
     isDark: Boolean,
     onToggleTheme: () -> Unit,
 ) {
@@ -713,6 +724,7 @@ private fun ReadyScreen(
                 ClayNavItem(Icons.Default.Face, BuddyText.nav, selected = false, onClick = onOpenBuddy),
                 ClayNavItem(Icons.Default.SmartToy, I18n.s.navAI, selected = false, onClick = onOpenProviders),
                 ClayNavItem(Icons.Default.Build, I18n.s.navCaps, selected = false, onClick = onOpenCapabilities),
+                ClayNavItem(Icons.Default.Android, I18n.s.navBuild, selected = false, onClick = onOpenBuild),
                 ClayNavItem(Icons.Default.Settings, I18n.s.navSettings, selected = false, onClick = onOpenSettings),
                 ClayNavItem(Icons.Default.OpenInNew, I18n.s.arenaTitle, selected = false, onClick = {
                     ArenaLauncher.open(context)
