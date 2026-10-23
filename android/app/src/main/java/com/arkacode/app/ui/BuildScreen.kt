@@ -40,6 +40,7 @@ import com.arkacode.app.core.EngineManager
 import com.arkacode.app.core.ExecRunner
 import com.arkacode.app.core.ExecSettings
 import com.arkacode.app.core.TermuxBridge
+import com.arkacode.app.core.ToolchainSetup
 import com.arkacode.app.core.VirtualFs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -87,6 +88,7 @@ fun BuildScreen(
     var projects by remember { mutableStateOf<List<String>>(emptyList()) }
     var selected by remember { mutableStateOf<String?>(null) }
     var runningBuild by remember { mutableStateOf(BuildState.running) }
+    var setupRunning by remember { mutableStateOf(false) }
     var logPath by remember { mutableStateOf<File?>(null) }
     var status by remember { mutableStateOf<BuildSupport.ToolchainStatus?>(null) }
     var apks by remember { mutableStateOf<List<File>>(emptyList()) }
@@ -170,9 +172,70 @@ fun BuildScreen(
         }
     }
 
+    // Siapkan toolchain (opsi A): tulis skrip → jalankan → ringkasan → re-probe.
+    fun startSetup() {
+        if (BuildState.running) return
+        val ts = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+        val guestLog = "$GUEST_WS/build-logs/setup-$ts.log"
+        val logFile = File(fs.prootWorkspaceDir(), "build-logs/setup-$ts.log")
+        val cmd = "mkdir -p ${BuildSupport.shQuote("$GUEST_WS/build-logs")} && bash " +
+            BuildSupport.shQuote("$GUEST_WS/.arka/setup-toolchain.sh") +
+            " > " + BuildSupport.shQuote(guestLog) + " 2>&1"
+        BuildState.running = true
+        BuildState.lastLogPath = logFile
+        setupRunning = true
+        logPath = logFile
+        execScope.launch {
+            try {
+                val ok = withContext(Dispatchers.IO) {
+                    runCatching { ToolchainSetup.ensureScript(fs.prootWorkspaceDir()) }.isSuccess
+                }
+                if (!ok) {
+                    withContext(Dispatchers.IO) {
+                        runCatching {
+                            logFile.parentFile?.mkdirs()
+                            logFile.appendText("gagal menulis setup-toolchain.sh\n")
+                        }
+                    }
+                    return@launch
+                }
+                val res = try {
+                    runner.run(
+                        cmd,
+                        settings = ExecSettings(timeoutMs = 1_800_000),
+                        onProcess = { BuildState.process = it },
+                    )
+                } catch (e: Exception) {
+                    withContext(Dispatchers.IO) {
+                        runCatching {
+                            logFile.parentFile?.mkdirs()
+                            logFile.appendText("${e.message}\n")
+                        }
+                    }
+                    return@launch
+                }
+                withContext(Dispatchers.IO) {
+                    runCatching { logFile.appendText(BuildSupport.summaryLine(res.exitCode)) }
+                }
+                val st = runCatching {
+                    runner.run(ToolchainSetup.PROBE_CMD, settings = ExecSettings(timeoutMs = 15_000))
+                }.getOrNull()
+                status = st?.let { BuildSupport.parseToolchain(it.stdout) }
+            } finally {
+                BuildState.running = false
+                BuildState.process = null
+                setupRunning = false
+            }
+        }
+    }
+
     LaunchedEffect(Unit) {
         scanProjects()
         logPath = BuildState.lastLogPath
+        val r = runCatching {
+            runner.run(ToolchainSetup.PROBE_CMD, settings = ExecSettings(timeoutMs = 15_000))
+        }
+        status = r.map { BuildSupport.parseToolchain(it.stdout) }.getOrNull()
     }
 
     // Tail file log aktif: baca penuh saat effect mulai (resume), lalu byte baru.
@@ -233,6 +296,11 @@ fun BuildScreen(
                             color = if (status?.ready == true) MaterialTheme.colorScheme.primary
                             else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        if (status?.ready == false) {
+                            Button(onClick = { startSetup() }, enabled = !setupRunning) {
+                                Text(I18n.s.buildSetup)
+                            }
+                        }
                     }
                 }
 
@@ -240,11 +308,11 @@ fun BuildScreen(
                     Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Button(
                             onClick = { startBuild() },
-                            enabled = selected != null && !runningBuild,
+                            enabled = selected != null && !runningBuild && !setupRunning,
                         ) {
                             Text(if (runningBuild) I18n.s.buildRunning else I18n.s.buildRun)
                         }
-                        if (runningBuild) {
+                        if (runningBuild || setupRunning) {
                             TextButton(onClick = { cancelBuild() }) {
                                 Text(I18n.s.buildCancel, color = MaterialTheme.colorScheme.error)
                             }
