@@ -137,4 +137,17 @@ object BuildSupport {
     /** Baris ringkasan — ikut ditulis ke file log agar terbaca saat overlay dibuka ulang. */
     fun summaryLine(exitCode: Int): String =
         "=== exit $exitCode === " + (if (exitCode == 0) "BUILD SUKSES" else "BUILD GAGAL") + "\n"
+
+    /**
+     * Hasil run ke file log: folder dibuat dulu (gagal cepat pun tercatat —
+     * jalur summary lama menulis tanpa mkdirs, jadi error tertelan dan pane
+     * kosong), lalu ringkasan exit + ekor stderr sebagai jejak kematian
+     * proses tamu yang terjadi sebelum redirect di dalam guest sempat jalan.
+     */
+    fun writeRunOutcome(logFile: File, res: ExecResult) {
+        logFile.parentFile?.mkdirs()
+        logFile.appendText(summaryLine(res.exitCode))
+        val err = res.stderr.trim()
+        if (err.isNotEmpty()) logFile.appendText(err.takeLast(2000) + "\n")
+    }
 }

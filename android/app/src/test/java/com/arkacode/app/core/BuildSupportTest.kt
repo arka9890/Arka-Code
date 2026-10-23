@@ -81,6 +81,32 @@ class BuildSupportTest {
     }
 
     @Test
+    fun `writeRunOutcome buat folder log lalu tulis ringkasan`() {
+        val log = File(tempRoot(), "build-logs/x.log")
+        BuildSupport.writeRunOutcome(log, ExecResult(exitCode = 0))
+        assertTrue(log.isFile)
+        assertEquals("=== exit 0 === BUILD SUKSES\n", log.readText())
+    }
+
+    @Test
+    fun `writeRunOutcome tulis ekor stderr yang terbatas`() {
+        val log = File(tempRoot(), "build-logs/x.log")
+        val stderr = "proot: segfault ".repeat(500) // ≈7,5 KB — jangan tumpah penuh ke log
+        BuildSupport.writeRunOutcome(log, ExecResult(exitCode = 139, stderr = stderr))
+        val isi = log.readText()
+        assertTrue(isi.startsWith("=== exit 139 === BUILD GAGAL\n"))
+        assertTrue(isi.contains(stderr.takeLast(2000).take(80)))
+        assertTrue(isi.length < 2500 + stderr.takeLast(2000).length)
+    }
+
+    @Test
+    fun `writeRunOutcome stderr kosong tidak menulis ekor`() {
+        val log = File(tempRoot(), "build-logs/x.log")
+        BuildSupport.writeRunOutcome(log, ExecResult(exitCode = 1, stderr = "  \n"))
+        assertEquals("=== exit 1 === BUILD GAGAL\n", log.readText())
+    }
+
+    @Test
     fun `ringkasan exit ditulis dengan format tetap`() {
         assertEquals("=== exit 0 === BUILD SUKSES\n", BuildSupport.summaryLine(0))
         assertEquals("=== exit 1 === BUILD GAGAL\n", BuildSupport.summaryLine(1))

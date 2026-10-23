@@ -102,7 +102,7 @@ fun BuildScreen(
     var projects by remember { mutableStateOf<List<String>>(emptyList()) }
     var selected by remember { mutableStateOf<String?>(null) }
     var runningBuild by remember { mutableStateOf(BuildState.running) }
-    var setupRunning by remember { mutableStateOf(false) }
+    var setupRunning by remember { mutableStateOf(BuildState.running) }
     var safTree by remember { mutableStateOf<String?>(null) }
     var adbIp by remember { mutableStateOf("") }
     var adbPairPort by remember { mutableStateOf("") }
@@ -231,6 +231,10 @@ fun BuildScreen(
         BuildState.lastLogPath = logFile
         runningBuild = true
         logPath = logFile
+        // Jejak klik: folder log dibuat + baris "mulai" ditulis di sini, sebelum
+        // launch — semua hasil (termasuk proses tamu yang mati cepat) kini
+        // terlihat di pane, bukan hilang diam-diam karena file tak pernah ada.
+        runCatching { logFile.parentFile?.mkdirs(); logFile.appendText("$ts mulai\n") }
         execScope.launch {
             try {
                 val res = try {
@@ -250,7 +254,7 @@ fun BuildScreen(
                 }
                 // Ringkasan ikut ke file: overlay ditutup → buka lagi, terbaca utuh.
                 withContext(Dispatchers.IO) {
-                    runCatching { logFile.appendText(BuildSupport.summaryLine(res.exitCode)) }
+                    runCatching { BuildSupport.writeRunOutcome(logFile, res) }
                 }
                 if (res.exitCode == 0) {
                     withContext(Dispatchers.IO) { refreshApks() }
@@ -286,6 +290,8 @@ fun BuildScreen(
         BuildState.lastLogPath = logFile
         setupRunning = true
         logPath = logFile
+        // Jejak klik — sama seperti startBuild: bukti klik masuk + folder siap.
+        runCatching { logFile.parentFile?.mkdirs(); logFile.appendText("$ts mulai\n") }
         execScope.launch {
             try {
                 val ok = withContext(Dispatchers.IO) {
@@ -316,7 +322,7 @@ fun BuildScreen(
                     return@launch
                 }
                 withContext(Dispatchers.IO) {
-                    runCatching { logFile.appendText(BuildSupport.summaryLine(res.exitCode)) }
+                    runCatching { BuildSupport.writeRunOutcome(logFile, res) }
                 }
                 val st = runCatching {
                     runner.run(ToolchainSetup.PROBE_CMD, settings = ExecSettings(timeoutMs = 15_000))
@@ -436,7 +442,10 @@ fun BuildScreen(
                             else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         if (status?.ready == false) {
-                            Button(onClick = { startSetup() }, enabled = !setupRunning) {
+                            Button(
+                                onClick = { startSetup() },
+                                enabled = !setupRunning && !runningBuild,
+                            ) {
                                 Text(I18n.s.buildSetup)
                             }
                         }
