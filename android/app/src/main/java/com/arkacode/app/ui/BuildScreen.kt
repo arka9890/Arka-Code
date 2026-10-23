@@ -353,6 +353,10 @@ fun BuildScreen(
             runner.run(ToolchainSetup.PROBE_CMD, settings = ExecSettings(timeoutMs = 15_000))
         }
         status = r.map { BuildSupport.parseToolchain(it.stdout) }.getOrNull()
+        // Termux/distro belum siap: alasan kegagalan probe wajib terlihat (design Cakupan).
+        if (status == null) {
+            r.exceptionOrNull()?.message?.let { appendAdbLine("toolchain probe ✗ $it") }
+        }
     }
 
     val treeLauncher = rememberLauncherForActivityResult(

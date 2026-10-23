@@ -50,7 +50,7 @@ baca) → setelah sukses, pasang APK lewat **ADB wireless** (pair kode + install
    ke `/root/workspace/.arka/setup-toolchain.sh` (tulis langsung dari sisi app)
    → `ExecRunner.run("bash ...", timeout 30 m)` dengan log ke file.
    Isi skrip = spike yang sudah terbukti, idempoten (cek dulu tiap bagian):
-   - apt: `openjdk-17-jdk-headless iproute2 adb qemu-user-static
+   - apt: `openjdk-17-jdk-headless iproute2 qemu-user-static
      libc6-amd64-cross libgcc-s1-amd64-cross libstdc++6-amd64-cross unzip curl`
    - cmdline-tools → `/opt/android-sdk`; `yes | sdkmanager --licenses`;
      `platforms;android-35` + `build-tools;35.0.0`
