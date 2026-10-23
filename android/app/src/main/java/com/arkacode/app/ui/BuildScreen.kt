@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,6 +23,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -38,6 +40,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.arkacode.app.core.AdbFields
 import com.arkacode.app.core.BuildPrefs
 import com.arkacode.app.core.BuildSupport
 import com.arkacode.app.core.DistroManager
@@ -60,6 +63,10 @@ import java.util.Locale
 
 /** Path root workspace di dalam distro (bind proot: filesDir/workspace). */
 private const val GUEST_WS = "/root/workspace"
+
+/** Probe IP terbaik dari wlan0 — `iproute2` dipasang setup toolchain. */
+private const val ADB_IP_PROBE =
+    "ip -4 addr show wlan0 | awk '/inet /{print $2}' | cut -d/ -f1"
 
 /**
  * Status lintas-overlay: [running] menahan build kedua (single-flight) dan
@@ -97,6 +104,11 @@ fun BuildScreen(
     var runningBuild by remember { mutableStateOf(BuildState.running) }
     var setupRunning by remember { mutableStateOf(false) }
     var safTree by remember { mutableStateOf<String?>(null) }
+    var adbIp by remember { mutableStateOf("") }
+    var adbPairPort by remember { mutableStateOf("") }
+    var adbCode by remember { mutableStateOf("") }
+    var adbConnectPort by remember { mutableStateOf("") }
+    var adbBusy by remember { mutableStateOf(false) }
     var logPath by remember { mutableStateOf<File?>(null) }
     var status by remember { mutableStateOf<BuildSupport.ToolchainStatus?>(null) }
     var apks by remember { mutableStateOf<List<File>>(emptyList()) }
@@ -136,6 +148,60 @@ fun BuildScreen(
                 logLines.add(baris)
             }
         }
+    }
+
+    fun persistAdb() {
+        scope.launch {
+            runCatching { prefs.setAdbFields(AdbFields(adbIp, adbPairPort, adbConnectPort)) }
+        }
+    }
+
+    fun appendAdbLine(s: String) {
+        val lp = BuildState.lastLogPath
+        if (lp != null) {
+            scope.launch {
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        lp.parentFile?.mkdirs()
+                        lp.appendText("$s\n")
+                    }
+                }
+            }
+        } else {
+            logLines.add(s)
+        }
+    }
+
+    // Output stdout+stderr jadi baris log; kode pairing tidak pernah ikut dicatat.
+    fun runAdb(cmd: String, timeoutMs: Long, label: String) {
+        if (adbBusy) return
+        adbBusy = true
+        scope.launch {
+            try {
+                val r = try {
+                    runner.run(cmd, settings = ExecSettings(timeoutMs = timeoutMs))
+                } catch (e: Exception) {
+                    appendAdbLine("$label ✗ ${e.message}")
+                    return@launch
+                }
+                appendAdbLine("$label exit=${r.exitCode}")
+                (r.stdout + r.stderr).lineSequence()
+                    .map { it.trimEnd() }
+                    .filter { it.isNotEmpty() }
+                    .forEach { appendAdbLine("  $it") }
+            } finally {
+                adbBusy = false
+            }
+        }
+    }
+
+    fun installLatest() {
+        val proj = selected ?: return
+        val apk = apks.firstOrNull() ?: return
+        val rel = runCatching { apk.relativeTo(File(fs.prootWorkspaceDir(), proj)).path }
+            .getOrElse { apk.name }
+        val guest = "$GUEST_WS/$proj/$rel"
+        runAdb("adb install -r -d ${BuildSupport.shQuote(guest)}", 300_000, "adb install")
     }
 
     fun scanProjects() {
@@ -268,6 +334,21 @@ fun BuildScreen(
         scanProjects()
         logPath = BuildState.lastLogPath
         safTree = runCatching { prefs.safTree() }.getOrNull()
+        runCatching { prefs.adbFields() }.getOrNull()?.let { f ->
+            adbIp = f.ip
+            adbPairPort = f.pairPort
+            adbConnectPort = f.connectPort
+            if (f.ip.isBlank()) {
+                val out = runCatching {
+                    runner.run(ADB_IP_PROBE, settings = ExecSettings(timeoutMs = 15_000))
+                }.getOrNull()?.stdout ?: ""
+                val found = out.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }
+                if (!found.isNullOrEmpty()) {
+                    adbIp = found
+                    runCatching { prefs.setAdbFields(AdbFields(found, f.pairPort, f.connectPort)) }
+                }
+            }
+        }
         val r = runCatching {
             runner.run(ToolchainSetup.PROBE_CMD, settings = ExecSettings(timeoutMs = 15_000))
         }
@@ -406,10 +487,73 @@ fun BuildScreen(
                     }
                 }
 
-                // Diisi Task 7 (pair/connect/install).
                 ClayCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(10.dp)) {
+                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(I18n.s.adbTitle, fontWeight = FontWeight.SemiBold)
+                        OutlinedTextField(
+                            value = adbIp,
+                            onValueChange = { adbIp = it },
+                            label = { Text(I18n.s.adbIp) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        OutlinedTextField(
+                            value = adbPairPort,
+                            onValueChange = { adbPairPort = it },
+                            label = { Text(I18n.s.adbPairPort) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        OutlinedTextField(
+                            value = adbCode,
+                            onValueChange = { adbCode = it },
+                            label = { Text(I18n.s.adbCode) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        OutlinedTextField(
+                            value = adbConnectPort,
+                            onValueChange = { adbConnectPort = it },
+                            label = { Text(I18n.s.adbConnectPort) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = {
+                                    persistAdb()
+                                    runAdb(
+                                        "adb pair " +
+                                            BuildSupport.shQuote("$adbIp:$adbPairPort") + " " +
+                                            BuildSupport.shQuote(adbCode),
+                                        20_000,
+                                        "adb pair",
+                                    )
+                                },
+                                enabled = !adbBusy && adbIp.isNotBlank() &&
+                                    adbPairPort.isNotBlank() && adbCode.isNotBlank(),
+                            ) { Text(I18n.s.adbPair) }
+                            Button(
+                                onClick = {
+                                    persistAdb()
+                                    runAdb(
+                                        "adb connect " + BuildSupport.shQuote("$adbIp:$adbConnectPort"),
+                                        20_000,
+                                        "adb connect",
+                                    )
+                                },
+                                enabled = !adbBusy && adbIp.isNotBlank() && adbConnectPort.isNotBlank(),
+                            ) { Text(I18n.s.adbConnect) }
+                        }
+                        Text(
+                            I18n.s.adbInstallWarn,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        Button(
+                            onClick = { installLatest() },
+                            enabled = !adbBusy && apks.isNotEmpty(),
+                        ) { Text(I18n.s.adbInstall) }
                     }
                 }
 
