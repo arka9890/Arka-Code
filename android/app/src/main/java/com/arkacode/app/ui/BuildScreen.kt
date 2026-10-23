@@ -95,7 +95,10 @@ fun BuildScreen(
     val scope = rememberCoroutineScope()
     val fs = remember { VirtualFs(context) }
     val runner = remember {
-        ExecRunner(context, DistroManager(context), engine.runtimeMode, TermuxBridge(context))
+        // distro WAJIB mengikuti engine (uiPrefs): default DistroManager = Alpine,
+        // padahal server bisa jalan di distro lain — beda rootfs = probe & build
+        // dijalankan di OS yang salah (exit 127 env: can't execute /usr/bin/sh).
+        ExecRunner(context, DistroManager(context, engine.distroSpec), engine.runtimeMode, TermuxBridge(context))
     }
     val prefs = remember { BuildPrefs(context) }
 
