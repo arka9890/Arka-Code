@@ -75,9 +75,16 @@ object WorkspaceExport {
     ): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
             val resolver = context.contentResolver
+            // Provider di sebagian perangkat menolak tree URI mentah saat
+            // createDocument ("Invalid URI: content://…/tree/…") — konversi dulu ke
+            // document URI (…/tree/<id>/document/<id>) sesuai resep platform.
+            val parentDoc = DocumentsContract.buildDocumentUriUsingTree(
+                treeUri,
+                DocumentsContract.getTreeDocumentId(treeUri),
+            )
             val doc = DocumentsContract.createDocument(
                 resolver,
-                treeUri,
+                parentDoc,
                 "application/vnd.android.package-archive",
                 newName,
             ) ?: throw IOException("tidak bisa membuat dokumen di folder tujuan")
