@@ -9,7 +9,8 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
-private val Context.uiPrefsStore by preferencesDataStore(name = "arkacode_ui")
+// internal: satu delegate untuk seluruh app (BuildPrefs memakai store yang sama)
+internal val Context.uiPrefsStore by preferencesDataStore(name = "arkacode_ui")
 
 /**
  * Override tampilan daftar sesi (F1+): ganti nama + sembunyikan.
