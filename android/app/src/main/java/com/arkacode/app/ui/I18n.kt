@@ -14,802 +14,801 @@ enum class AppLang(val code: String) {
  * Teks UI dua bahasa. String berparameter memakai lambda agar tidak salah format.
  * Baca `I18n.s` di dalam Composable → otomatis recompose saat bahasa berubah.
  */
-data class Strings(
-    val appName: String,
-    val stop: String,
-    val retry: String,
-    val tagline: (String, Int) -> String,
-    val sessionsCount: (Int) -> String,
-    val newSession: String,
-    val reload: String,
-    val loadingSessions: String,
-    val loadSessionsFailed: String,
-    val noSessions: String,
-    val noTitle: String,
-    val renameSession: String,
-    val name: String,
-    val save: String,
-    val cancel: String,
-    val hideSession: String,
-    val hideSessionBody: String,
-    val hide: String,
-    val preparing: String,
-    val failedPrefix: String,
-    val port: String,
-    val serverPassword: String,
-    val showPassword: String,
-    val hidePassword: String,
-    val navSessions: String,
-    val navAI: String,
-    val navCaps: String,
+class Strings {
+    var appName: String = ""
+    var stop: String = ""
+    var retry: String = ""
+    var tagline: (String, Int) -> String = { _, _ -> "" }
+    var sessionsCount: (Int) -> String = { "" }
+    var newSession: String = ""
+    var reload: String = ""
+    var loadingSessions: String = ""
+    var loadSessionsFailed: String = ""
+    var noSessions: String = ""
+    var noTitle: String = ""
+    var renameSession: String = ""
+    var name: String = ""
+    var save: String = ""
+    var cancel: String = ""
+    var hideSession: String = ""
+    var hideSessionBody: String = ""
+    var hide: String = ""
+    var preparing: String = ""
+    var failedPrefix: String = ""
+    var port: String = ""
+    var serverPassword: String = ""
+    var showPassword: String = ""
+    var hidePassword: String = ""
+    var navSessions: String = ""
+    var navAI: String = ""
+    var navCaps: String = ""
     // chat
-    val titleFallback: String,
-    val modelServer: String,
-    val agentFallback: String,
-    val close: String,
-    val chatTab: String,
-    val filesTab: String,
-    val working: String,
-    val emptyReply: String,
-    val menuAgent: String,
-    val menuCommands: String,
-    val menuCompact: String,
-    val menuRevertLast: String,
-    val writeMessage: String,
-    val slashHint: String,
-    val attachFile: String,
-    val removeFile: String,
-    val attachTooLarge: String,
-    val attachUnreadable: String,
-    val send: String,
-    val attachments: (Int) -> String,
-    val revertHere: String,
-    val showThinking: String,
-    val hideThinking: String,
-    val thinkingCount: (Int) -> String,
-    val copy: String,
-    val copied: String,
-    val back: String,
-    val menu: String,
-    val agentTitle: String,
-    val noAgents: String,
-    val active: String,
-    val pick: String,
-    val commandsTitle: String,
-    val noCommands: String,
-    val use: String,
-    val revertToMessage: (String) -> String,
-    val noFilesChanged: String,
-    val filesWillRevert: (Int) -> String,
-    val cancelBtn: String,
-    val applyRevert: String,
-    val approvalTitle: (Int) -> String,
-    val reject: String,
-    val allow: String,
-    val always: String,
-    val sendFail: String,
-    val compactFail: String,
-    val revertFail: String,
-    val pickModel: String,
+    var titleFallback: String = ""
+    var modelServer: String = ""
+    var agentFallback: String = ""
+    var close: String = ""
+    var chatTab: String = ""
+    var filesTab: String = ""
+    var working: String = ""
+    var emptyReply: String = ""
+    var menuAgent: String = ""
+    var menuCommands: String = ""
+    var menuCompact: String = ""
+    var menuRevertLast: String = ""
+    var writeMessage: String = ""
+    var slashHint: String = ""
+    var attachFile: String = ""
+    var removeFile: String = ""
+    var attachTooLarge: String = ""
+    var attachUnreadable: String = ""
+    var send: String = ""
+    var attachments: (Int) -> String = { "" }
+    var revertHere: String = ""
+    var showThinking: String = ""
+    var hideThinking: String = ""
+    var thinkingCount: (Int) -> String = { "" }
+    var copy: String = ""
+    var copied: String = ""
+    var back: String = ""
+    var menu: String = ""
+    var agentTitle: String = ""
+    var noAgents: String = ""
+    var active: String = ""
+    var pick: String = ""
+    var commandsTitle: String = ""
+    var noCommands: String = ""
+    var use: String = ""
+    var revertToMessage: (String) -> String = { "" }
+    var noFilesChanged: String = ""
+    var filesWillRevert: (Int) -> String = { "" }
+    var cancelBtn: String = ""
+    var applyRevert: String = ""
+    var approvalTitle: (Int) -> String = { "" }
+    var reject: String = ""
+    var allow: String = ""
+    var always: String = ""
+    var sendFail: String = ""
+    var compactFail: String = ""
+    var revertFail: String = ""
+    var pickModel: String = ""
     // capabilities
-    val capsTitle: String,
-    val tabAgents: String,
-    val tabCommands: String,
-    val tabSkills: String,
-    val noAgentsShort: String,
-    val noCommandsShort: String,
-    val noSkills: String,
-    val modeFmt: (String) -> String,
-    val commandHint: (String) -> String,
-    val slashTag: String,
+    var capsTitle: String = ""
+    var tabAgents: String = ""
+    var tabCommands: String = ""
+    var tabSkills: String = ""
+    var noAgentsShort: String = ""
+    var noCommandsShort: String = ""
+    var noSkills: String = ""
+    var modeFmt: (String) -> String = { "" }
+    var commandHint: (String) -> String = { "" }
+    var slashTag: String = ""
     // files
-    val backToList: String,
-    val filesTitle: String,
-    val reloadFiles: String,
-    val searchFile: String,
-    val search: String,
-    val closeSearch: String,
-    val loading: String,
-    val empty: String,
-    val previewFail: String,
+    var backToList: String = ""
+    var filesTitle: String = ""
+    var reloadFiles: String = ""
+    var searchFile: String = ""
+    var search: String = ""
+    var closeSearch: String = ""
+    var loading: String = ""
+    var empty: String = ""
+    var previewFail: String = ""
     // providers
-    val providersTitle: String,
-    val providersHelp: String,
-    val envFmt: (String) -> String,
-    val savedHintReplace: String,
-    val pasteKey: String,
-    val saveKey: String,
-    val deleteKey: String,
-    val keyDeleted: (String) -> String,
-    val keySaved: (String) -> String,
-    val viaJson: String,
-    val modelsLabel: String,
-    val free: String,
-    val othersCount: (Int) -> String,
-    val modelsCount: (Int) -> String,
-    val searchHint: String,
-    val noModels: String,
-    val unsupportedHidden: (Int) -> String,
-    val activeBadge: String,
+    var providersTitle: String = ""
+    var providersHelp: String = ""
+    var envFmt: (String) -> String = { "" }
+    var savedHintReplace: String = ""
+    var pasteKey: String = ""
+    var saveKey: String = ""
+    var deleteKey: String = ""
+    var keyDeleted: (String) -> String = { "" }
+    var keySaved: (String) -> String = { "" }
+    var viaJson: String = ""
+    var modelsLabel: String = ""
+    var free: String = ""
+    var othersCount: (Int) -> String = { "" }
+    var modelsCount: (Int) -> String = { "" }
+    var searchHint: String = ""
+    var noModels: String = ""
+    var unsupportedHidden: (Int) -> String = { "" }
+    var activeBadge: String = ""
     // custom providers (OpenAI-compatible)
-    val customProvidersTitle: String,
-    val customProvidersHelp: String,
-    val customAdd: String,
-    val customEmpty: String,
-    val customNameLabel: String,
-    val customBaseUrlLabel: String,
-    val customModelsHintLabel: String,
-    val customModelsHint: String,
-    val customApiKeyLabel: String,
-    val customSaveFailed: String,
-    val customNeedDistro: String,
-    val customInvalid: String,
-    val customSavedNotice: String,
-    val customDeletedNotice: (String) -> String,
-    val customEdit: String,
-    val customEditTitle: String,
-    val customScan: String,
-    val customScanApply: (Int) -> String,
-    val customScanEmpty: String,
-    val customApply: String,
-    val customApplyHint: (Int, Int) -> String,
-    val customKeepAll: String,
+    var customProvidersTitle: String = ""
+    var customProvidersHelp: String = ""
+    var customAdd: String = ""
+    var customEmpty: String = ""
+    var customNameLabel: String = ""
+    var customBaseUrlLabel: String = ""
+    var customModelsHintLabel: String = ""
+    var customModelsHint: String = ""
+    var customApiKeyLabel: String = ""
+    var customSaveFailed: String = ""
+    var customNeedDistro: String = ""
+    var customInvalid: String = ""
+    var customSavedNotice: String = ""
+    var customDeletedNotice: (String) -> String = { "" }
+    var customEdit: String = ""
+    var customEditTitle: String = ""
+    var customScan: String = ""
+    var customScanApply: (Int) -> String = { "" }
+    var customScanEmpty: String = ""
+    var customApply: String = ""
+    var customApplyHint: (Int, Int) -> String = { _, _ -> "" }
+    var customKeepAll: String = ""
     // integrations / oauth
-    val integrationsTitle: String,
-    val integrationsOpen: String,
-    val integrationsHelp: String,
-    val noIntegrations: String,
-    val searchIntegrations: String,
-    val noIntegrationsMatch: String,
+    var integrationsTitle: String = ""
+    var integrationsOpen: String = ""
+    var integrationsHelp: String = ""
+    var noIntegrations: String = ""
+    var searchIntegrations: String = ""
+    var noIntegrationsMatch: String = ""
     // Tombol OAuth dan API key sebelumnya sama-sama "Connect", jadi user tidak
     // bisa tahu mana yang membuka browser sebelum sempat diklik.
-    val connectBrowser: String,
-    val connectKey: String,
-    val connectExternal: String,
-    val connected: String,
-    val connLabel: (String) -> String,
-    val envProvided: (String) -> String,
-    val oauthInstructions: String,
-    val oauthOpenBrowser: String,
-    val oauthCodeLabel: String,
-    val finishConnect: String,
-    val cancelConnect: String,
-    val oauthPending: String,
-    val oauthFailed: (String) -> String,
-    val oauthExpired: String,
-    val connecting: String,
-    val disconnect: String,
-    val disconnected: String,
-    val disconnectConfirm: (String) -> String,
-    val reconnectNeeded: String,
-    val restartToApply: String,
-    val restartNow: String,
-    val runningTool: (String) -> String,
-    val questionTitle: (Int) -> String,
-    val submitAnswers: String,
-    val rejectQuestion: String,
-    val ownAnswer: String,
-    val multipleHint: String,
-    val compactCommandDesc: String,
-    val compactPrompt: String,
-    val navSettings: String,
-    val navBuild: String,
-    val buildTitle: String,
-    val buildProject: String,
-    val buildRefresh: String,
-    val buildToolchain: String,
-    val buildToolchainOk: String,
-    val buildToolchainMissing: String,
-    val buildSetup: String,
-    val buildRun: String,
-    val buildCancel: String,
-    val buildRunning: String,
-    val buildLog: String,
-    val buildResult: String,
-    val buildSuccess: String,
-    val buildFailed: String,
-    val buildNoApk: String,
-    val buildPickFolder: String,
-    val buildCopied: String,
-    val buildCopyFailed: String,
-    val adbTitle: String,
-    val adbIp: String,
-    val adbPairPort: String,
-    val adbCode: String,
-    val adbConnectPort: String,
-    val adbPair: String,
-    val adbConnect: String,
-    val adbInstall: String,
-    val adbInstallWarn: String,
-    val settingsLanguage: String,
-    val settingsTheme: String,
-    val settingsServer: String,
-    val settingsIntegrations: String,
-    val settingsGitPat: String,
-    val settingsAbout: String,
-    val themeLight: String,
-    val themeDark: String,
-    val serverSaved: String,
-    val gitPatHelp: String,
-    val gitPatPlaceholder: String,
-    val gitPatSaved: String,
-    val gitPatDeleted: String,
-    // engine update
-    val settingsEngine: String,
+    var connectBrowser: String = ""
+    var connectKey: String = ""
+    var connectExternal: String = ""
+    var connected: String = ""
+    var connLabel: (String) -> String = { "" }
+    var envProvided: (String) -> String = { "" }
+    var oauthInstructions: String = ""
+    var oauthOpenBrowser: String = ""
+    var oauthCodeLabel: String = ""
+    var finishConnect: String = ""
+    var cancelConnect: String = ""
+    var oauthPending: String = ""
+    var oauthFailed: (String) -> String = { "" }
+    var oauthExpired: String = ""
+    var connecting: String = ""
+    var disconnect: String = ""
+    var disconnected: String = ""
+    var disconnectConfirm: (String) -> String = { "" }
+    var reconnectNeeded: String = ""
+    var restartToApply: String = ""
+    var restartNow: String = ""
+    var runningTool: (String) -> String = { "" }
+    var questionTitle: (Int) -> String = { "" }
+    var submitAnswers: String = ""
+    var rejectQuestion: String = ""
+    var ownAnswer: String = ""
+    var multipleHint: String = ""
+    var compactCommandDesc: String = ""
+    var compactPrompt: String = ""
+    var navSettings: String = ""
+    var navBuild: String = ""
+    var buildTitle: String = ""
+    var buildProject: String = ""
+    var buildRefresh: String = ""
+    var buildToolchain: String = ""
+    var buildToolchainOk: String = ""
+    var buildToolchainMissing: String = ""
+    var buildSetup: String = ""
+    var buildRun: String = ""
+    var buildCancel: String = ""
+    var buildRunning: String = ""
+    var buildLog: String = ""
+    var buildResult: String = ""
+    var buildSuccess: String = ""
+    var buildFailed: String = ""
+    var buildNoApk: String = ""
+    var buildPickFolder: String = ""
+    var buildCopied: String = ""
+    var buildCopyFailed: String = ""
+    var adbTitle: String = ""
+    var adbIp: String = ""
+    var adbPairPort: String = ""
+    var adbCode: String = ""
+    var adbConnectPort: String = ""
+    var adbPair: String = ""
+    var adbConnect: String = ""
+    var adbInstall: String = ""
+    var adbInstallWarn: String = ""
+    var settingsLanguage: String = ""
+    var settingsTheme: String = ""
+    var settingsServer: String = ""
+    var settingsIntegrations: String = ""
+    var settingsGitPat: String = ""
+    var settingsAbout: String = ""
+    var themeLight: String = ""
+    var themeDark: String = ""
+    var serverSaved: String = ""
+    var gitPatHelp: String = ""
+    var gitPatPlaceholder: String = ""
+    var gitPatSaved: String = ""
+    var gitPatDeleted: String = ""
+    var settingsEngine: String = ""
     // arena ai webview
-    val arenaTitle: String,
-    val arenaSubtitle: String,
-    val arenaOpen: String,
-    val arenaImportDownloads: String,
-    val arenaImported: (Int) -> String,
-    val engineInstalled: (String) -> String,
-    val engineNotInstalled: String,
-    val engineAutoUpdate: String,
-    val engineAutoUpdateHelp: String,
-    val engineCheck: String,
-    val engineChecking: String,
-    val engineUpToDate: (String) -> String,
-    val engineUpdateAvailable: (String, String) -> String,
-    val engineUpdateNow: String,
-    val engineUpdating: String,
-    val engineUpdated: (String) -> String,
-    val engineUpdateFailed: (String) -> String,
-    val engineCheckFailed: String,
+    var arenaTitle: String = ""
+    var arenaSubtitle: String = ""
+    var arenaOpen: String = ""
+    var arenaImportDownloads: String = ""
+    var arenaImported: (Int) -> String = { "" }
+    var engineInstalled: (String) -> String = { "" }
+    var engineNotInstalled: String = ""
+    var engineAutoUpdate: String = ""
+    var engineAutoUpdateHelp: String = ""
+    var engineCheck: String = ""
+    var engineChecking: String = ""
+    var engineUpToDate: (String) -> String = { "" }
+    var engineUpdateAvailable: (String, String) -> String = { _, _ -> "" }
+    var engineUpdateNow: String = ""
+    var engineUpdating: String = ""
+    var engineUpdated: (String) -> String = { "" }
+    var engineUpdateFailed: (String) -> String = { "" }
+    var engineCheckFailed: String = ""
     // --- Distro & runtime ---------------------------------------------------
-    val navDistro: String,
-    val pickDistroTitle: String,
-    val distroRuntime: String,
-    val distroRuntimeProot: String,
-    val distroRuntimeTermux: String,
-    val distroActive: String,
-    val distroInstalled: String,
-    val distroNotInstalled: String,
-    val distroInstall: String,
-    val distroRemove: String,
-    val distroCustomUrl: String,
-    val distroCustomUrlHint: String,
-    val distroPackageManager: String,
-    val distroSize: String,
-    val distroTermuxAllow: String,
-    val distroTermuxOpen: String,
-    val distroProotMissing: String,
-    val distroSaved: String,
-    val distroOpen: String,
-    val distroSummary: String,
-    val distroNotAvailable: String,
-    val distroGroupOther: String,
-    val distroGroupCustom: String,
-    val distroReinstall: String,
-    val distroDownloading: String,
-    val distroNotInstalledYet: String,
-    val distroInstallCancelled: String,
-    val distroInstallBusy: String,
-    val distroRestartHint: String,
-)
+    var navDistro: String = ""
+    var pickDistroTitle: String = ""
+    var distroRuntime: String = ""
+    var distroRuntimeProot: String = ""
+    var distroRuntimeTermux: String = ""
+    var distroActive: String = ""
+    var distroInstalled: String = ""
+    var distroNotInstalled: String = ""
+    var distroInstall: String = ""
+    var distroRemove: String = ""
+    var distroCustomUrl: String = ""
+    var distroCustomUrlHint: String = ""
+    var distroPackageManager: String = ""
+    var distroSize: String = ""
+    var distroTermuxAllow: String = ""
+    var distroTermuxOpen: String = ""
+    var distroProotMissing: String = ""
+    var distroSaved: String = ""
+    var distroOpen: String = ""
+    var distroSummary: String = ""
+    var distroNotAvailable: String = ""
+    var distroGroupOther: String = ""
+    var distroGroupCustom: String = ""
+    var distroReinstall: String = ""
+    var distroDownloading: String = ""
+    var distroNotInstalledYet: String = ""
+    var distroInstallCancelled: String = ""
+    var distroInstallBusy: String = ""
+    var distroRestartHint: String = ""
+}
 
-private val id = Strings(
-    appName = "Arkacode",
-    stop = "Stop",
-    retry = "Coba lagi",
-    tagline = { v, p -> "server jalan · opencode v$v · port $p" },
-    sessionsCount = { "Sesi ($it)" },
-    newSession = "+ Sesi",
-    reload = "Muat ulang",
-    loadingSessions = "memuat…",
-    loadSessionsFailed = "gagal memuat sesi.",
-    noSessions = "Belum ada sesi. Ketuk + Sesi untuk mulai chat.",
-    noTitle = "(tanpa judul)",
-    renameSession = "Ganti nama sesi",
-    name = "Nama",
-    save = "Simpan",
-    cancel = "Batal",
-    hideSession = "Sembunyikan sesi?",
-    hideSessionBody = "Sesi disembunyikan dari daftar ini. Server opencode tidak menyediakan hapus sesi, jadi data tetap ada di server.",
-    hide = "Sembunyikan",
-    preparing = "Menyiapkan opencode…",
-    failedPrefix = "Gagal: ",
-    port = "Port",
-    serverPassword = "Password server",
-    showPassword = "Tampilkan password",
-    hidePassword = "Sembunyikan password",
-    navSessions = "Sesi",
-    navAI = "Provider",
-    navCaps = "Kapabilitas",
-    titleFallback = "Sesi",
-    modelServer = "Model server",
-    agentFallback = "agent",
-    close = "Tutup",
-    chatTab = "Chat",
-    filesTab = "Files",
-    working = "bekerja…",
-    emptyReply = "Model tidak mengirim teks (balasan kosong).",
-    menuAgent = "Agent…",
-    menuCommands = "Perintah…",
-    menuCompact = "Ringkas percakapan",
-    menuRevertLast = "Revert ke pesan terakhir",
-    writeMessage = "Tulis pesan…",
-    slashHint = "Tulis pesan… atau ketik /",
-    attachFile = "Lampirkan berkas",
-    removeFile = "Hapus lampiran",
-    attachTooLarge = "Berkas terlalu besar (maks 6 MB)",
-    attachUnreadable = "Gagal membaca berkas",
-    send = "Kirim",
-    attachments = { "$it lampiran" },
-    revertHere = "Revert ke sini",
-    showThinking = "Sembunyikan pemikiran",
-    hideThinking = "Lihat pemikiran",
-    thinkingCount = { "Lihat pemikiran ($it)" },
-    copy = "Salin",
-    copied = "Disalin ✓",
-    back = "Kembali",
-    menu = "Menu",
-    agentTitle = "Agent",
-    noAgents = "Tidak ada agent.",
-    active = "aktif",
-    pick = "Pilih",
-    commandsTitle = "Perintah",
-    noCommands = "Tidak ada perintah.",
-    use = "Pakai",
-    revertToMessage = { "Revert ke pesan ${it.take(8)}" },
-    noFilesChanged = "Tidak ada berkas yang berubah pada langkah ini.",
-    filesWillRevert = { "$it berkas akan dikembalikan:" },
-    cancelBtn = "Batalkan",
-    applyRevert = "Terapkan revert",
-    approvalTitle = { "Persetujuan tool ($it)" },
-    reject = "Tolak",
-    allow = "Izinkan",
-    always = "Selalu",
-    sendFail = "gagal mengirim",
-    compactFail = "gagal ringkas",
-    revertFail = "gagal revert",
-    pickModel = "Pilih model",
-    capsTitle = "Kapabilitas",
-    tabAgents = "Agent",
-    tabCommands = "Perintah",
-    tabSkills = "Skill",
-    noAgentsShort = "Tidak ada agent.",
-    noCommandsShort = "Tidak ada perintah.",
-    noSkills = "Tidak ada skill.",
-    modeFmt = { "mode: $it" },
-    commandHint = { "ketik /$it di kolom chat" },
-    slashTag = "slash",
-    backToList = "‹ Daftar",
-    filesTitle = "Files",
-    reloadFiles = "Muat ulang",
-    searchFile = "Cari file…",
-    search = "Cari",
-    closeSearch = "Tutup pencarian",
-    loading = "memuat…",
-    empty = "Kosong.",
-    previewFail = "(gagal tampilkan gambar)",
-    providersTitle = "Penyedia AI",
-    providersHelp = "Isi API key per provider — tersimpan terenkripsi di HP dan disuntik otomatis tiap server nyala. Berlaku setelah Stop → Start ulang. Model gratis Zen: daftar di opencode.ai/auth (boleh lewat browser HP), buat API key, tempel di provider OpenCode di bawah.",
-    envFmt = { "Env: $it" },
-    savedHintReplace = "tersimpan (isi untuk ganti)",
-    pasteKey = "tempel API key…",
-    saveKey = "Simpan",
-    deleteKey = "Hapus",
-    keyDeleted = { "Kunci $it dihapus." },
-    keySaved = { "Kunci $it tersimpan. Stop → Start agar berlaku." },
-    viaJson = "Kunci diatur via opencode.json di server untuk provider ini.",
-    modelsLabel = "Model:",
-    free = "Gratis",
-    othersCount = { "+$it lainnya" },
-    modelsCount = { "$it model" },
-    searchHint = "Cari…",
-    noModels = "Tidak ada model dari server. Pastikan penyedia sudah dikonfigurasi (butuh login/API key di server opencode).",
-    unsupportedHidden = { "$it model disembunyikan (tak didukung engine)" },
-    activeBadge = "Aktif",
-    customProvidersTitle = "Provider kustom (OpenAI-compatible)",
-    customProvidersHelp = "Endpoint /v1 bergaya OpenAI: LM Studio, llama.cpp, vLLM, Ollama, OpenRouter, dll. Ditulis ke opencode.json server \u2014 Stop \u2192 Start ulang agar berlaku.",
-    customAdd = "+ Tambah",
-    customEmpty = "Belum ada provider kustom.",
-    customNameLabel = "Nama",
-    customBaseUrlLabel = "Base URL (berakhir /v1)",
-    customModelsHintLabel = "Model ID (pisah koma, opsional)",
-    customModelsHint = "mis. qwen2.5-coder:7b, gpt-4o-mini",
-    customApiKeyLabel = "API key (opsional)",
-    customSaveFailed = "Gagal menyimpan (opencode.json server tidak valid atau tak bisa ditulis).",
-    customNeedDistro = "Pasang distro Alpine dulu (tab Engine) untuk menyimpan config.",
-    customInvalid = "Nama dan Base URL wajib diisi.",
-    customSavedNotice = "Provider kustom disimpan. Stop \u2192 Start agar berlaku.",
-    customDeletedNotice = { "Provider $it dihapus." },
-    customEdit = "Edit",
-    customEditTitle = "Edit Provider",
-    customScan = "Scan",
-    customScanApply = { "Pakai $it model" },
-    customScanEmpty = "Tidak ada model ditemukan di endpoint.",
-    customApply = "Terapkan",
-    customApplyHint = { keep, total -> "Simpan $keep dari $total provider" },
-    customKeepAll = "Semua",
-    integrationsTitle = "Integrasi",
-    integrationsOpen = "Integrasi & OAuth (Zen)…",
-    integrationsHelp = "Hubungkan integrasi server (mis. opencode Zen) lewat OAuth atau API key. Kredensial disimpan di server; Stop \u2192 Start ulang agar berlaku.",
-    noIntegrations = "Tidak ada integrasi dari server.",
-    searchIntegrations = "Cari integrasi…",
-    noIntegrationsMatch = "Tidak ada integrasi yang cocok.",
-    connectBrowser = "Masuk via browser",
-    connectKey = "Masukkan API key",
-    connectExternal = "Gunakan kredensial lokal",
-    connected = "Terhubung",
-    connLabel = { "\u2022 $it" },
-    envProvided = { "via env: $it" },
-    oauthInstructions = "Buka tautan untuk mengizinkan, lalu kembali ke sini.",
-    oauthOpenBrowser = "Buka browser",
-    oauthCodeLabel = "Tempel kode otorisasi",
-    finishConnect = "Selesaikan",
-    cancelConnect = "Batalkan",
-    oauthPending = "Menunggu otorisasi…",
-    oauthFailed = { "Gagal: $it" },
-    oauthExpired = "Sesi otorisasi kedaluwarsa.",
-    connecting = "Memulai…",
-    disconnect = "Putuskan",
-    disconnected = "Koneksi diputus.",
-    disconnectConfirm = { "Putuskan koneksi \"$it\"? Token akan dihapus dari server." },
-    reconnectNeeded = "perlu hubung ulang",
-    restartToApply = "Berhasil terhubung. Mulai ulang server agar berlaku.",
-    restartNow = "Mulai ulang",
-    runningTool = { "menjalankan $it…" },
-    questionTitle = { "Pertanyaan agent ($it)" },
-    submitAnswers = "Kirim jawaban",
-    rejectQuestion = "Tolak",
-    ownAnswer = "Tulis jawaban sendiri…",
-    multipleHint = "Boleh pilih lebih dari satu",
-    compactCommandDesc = "Ringkas percakapan jadi poin-poin konteks",
-    compactPrompt = "Ringkas percakapan ini sejauh ini menjadi poin-poin padat: keputusan penting, perubahan berkas kunci, hal yang belum selesai, dan langkah berikutnya. Ringkas saja tanpa menjalankan tool.",
-    navSettings = "Pengaturan",
-    navBuild = "Build",
-    buildTitle = "Build APK",
-    buildProject = "Proyek",
-    buildRefresh = "Muat ulang",
-    buildToolchain = "Toolchain",
-    buildToolchainOk = "siap",
-    buildToolchainMissing = "belum siap",
-    buildSetup = "Siapkan toolchain (≈2 GB)",
-    buildRun = "Build assembleDebug",
-    buildCancel = "Batal",
-    buildRunning = "Build berjalan…",
-    buildLog = "Log build",
-    buildResult = "Hasil",
-    buildSuccess = "Build sukses",
-    buildFailed = "Build gagal",
-    buildNoApk = "Belum ada APK",
-    buildPickFolder = "Pilih folder tujuan",
-    buildCopied = "Tersalin: ",
-    buildCopyFailed = "Gagal menyalin: ",
-    adbTitle = "ADB wireless",
-    adbIp = "IP perangkat",
-    adbPairPort = "Port pairing",
-    adbCode = "Kode pairing",
-    adbConnectPort = "Port connect",
-    adbPair = "Pair",
-    adbConnect = "Connect",
-    adbInstall = "Pasang APK",
-    adbInstallWarn = "App akan dimatikan Android — sesi berjalan terputus.",
-    settingsLanguage = "Bahasa",
-    settingsTheme = "Tema",
-    settingsServer = "Server",
-    settingsIntegrations = "Integrasi",
-    settingsGitPat = "GitHub PAT",
-    settingsAbout = "Tentang",
-    themeLight = "Terang",
-    themeDark = "Gelap",
-    serverSaved = "Kredensial server tersimpan.",
-    gitPatHelp = "Disimpan terenkripsi & ditulis ke git-credentials proot.",
-    gitPatPlaceholder = "ghp_... atau token klasik",
-    gitPatSaved = "GitHub PAT tersimpan & disinkronkan.",
-    gitPatDeleted = "GitHub PAT dihapus.",
-    settingsEngine = "Engine opencode",
-    arenaTitle = "Arena AI",
-    arenaSubtitle = "Chat AI via browser bawaan",
-    arenaOpen = "Buka Arena AI",
-    arenaImportDownloads = "Impor dari Downloads",
-    arenaImported = { "Berhasil impor $it berkas ke workspace" },
-    engineInstalled = { v -> "Terpasang: v$v" },
-    engineNotInstalled = "Belum terpasang",
-    engineAutoUpdate = "Perbarui otomatis",
-    engineAutoUpdateHelp = "Saat app dibuka, cek rilis opencode terbaru dan pasang otomatis bila ada.",
-    engineCheck = "Cek pembaruan",
-    engineChecking = "Memeriksa…",
-    engineUpToDate = { v -> "Sudah terbaru (v$v)." },
-    engineUpdateAvailable = { latest, cur -> "Tersedia v$latest (kini v$cur)." },
-    engineUpdateNow = "Perbarui sekarang",
-    engineUpdating = "Memperbarui…",
-    engineUpdated = { v -> "Diperbarui ke v$v. Server dihentikan - start ulang." },
-    engineUpdateFailed = { m -> "Gagal memperbarui: $m" },
-    engineCheckFailed = "Gagal cek pembaruan (offline?).",
-    navDistro = "Distro",
-    pickDistroTitle = "Pilih distro",
-    distroRuntime = "Runtime",
-    distroRuntimeProot = "Proot (rootfs sendiri)",
-    distroRuntimeTermux = "Termux (app terpasang)",
-    distroActive = "Aktif",
-    distroInstalled = "Terpasang",
-    distroNotInstalled = "Belum terpasang",
-    distroInstall = "Unduh & pasang",
-    distroRemove = "Hapus",
-    distroCustomUrl = "URL rootfs",
-    distroCustomUrlHint = "https://…/rootfs.tar.gz atau .tar.xz",
-    distroPackageManager = "Package manager",
-    distroSize = "Ukuran",
-    distroTermuxAllow = "Izinkan di Termux",
-    distroTermuxOpen = "Buka Termux",
-    distroProotMissing = "Binary proot tidak ada di APK ini — build ulang dengan jaringan (task downloadProotBinaries).",
-    distroSaved = "Distro disimpan.",
-    distroOpen = "Buka pengaturan distro",
-    distroSummary = "Pilih runtime eksekusi command (proot atau Termux) dan distro rootfs yang dipakai.",
-    distroNotAvailable = "Tidak tersedia untuk arsitektur perangkat ini.",
-    distroGroupOther = "Lain-lain",
-    distroGroupCustom = "Kustom",
-    distroReinstall = "Unduh ulang",
-    distroDownloading = "Mengunduh rootfs…",
-    distroNotInstalledYet = "Belum terpasang — mengunduh dulu.",
-    distroInstallCancelled = "Unduhan dibatalkan.",
-    distroInstallBusy = "Sudah ada unduhan lain yang jalan.",
-    distroRestartHint = "Restart server (Stop lalu jalankan lagi) untuk menerapkan distro baru.",
-)
+private val id = Strings().apply {
+    appName = "Arkacode"
+    stop = "Stop"
+    retry = "Coba lagi"
+    tagline = { v, p -> "server jalan · opencode v$v · port $p" }
+    sessionsCount = { "Sesi ($it)" }
+    newSession = "+ Sesi"
+    reload = "Muat ulang"
+    loadingSessions = "memuat…"
+    loadSessionsFailed = "gagal memuat sesi."
+    noSessions = "Belum ada sesi. Ketuk + Sesi untuk mulai chat."
+    noTitle = "(tanpa judul)"
+    renameSession = "Ganti nama sesi"
+    name = "Nama"
+    save = "Simpan"
+    cancel = "Batal"
+    hideSession = "Sembunyikan sesi?"
+    hideSessionBody = "Sesi disembunyikan dari daftar ini. Server opencode tidak menyediakan hapus sesi, jadi data tetap ada di server."
+    hide = "Sembunyikan"
+    preparing = "Menyiapkan opencode…"
+    failedPrefix = "Gagal: "
+    port = "Port"
+    serverPassword = "Password server"
+    showPassword = "Tampilkan password"
+    hidePassword = "Sembunyikan password"
+    navSessions = "Sesi"
+    navAI = "Provider"
+    navCaps = "Kapabilitas"
+    titleFallback = "Sesi"
+    modelServer = "Model server"
+    agentFallback = "agent"
+    close = "Tutup"
+    chatTab = "Chat"
+    filesTab = "Files"
+    working = "bekerja…"
+    emptyReply = "Model tidak mengirim teks (balasan kosong)."
+    menuAgent = "Agent…"
+    menuCommands = "Perintah…"
+    menuCompact = "Ringkas percakapan"
+    menuRevertLast = "Revert ke pesan terakhir"
+    writeMessage = "Tulis pesan…"
+    slashHint = "Tulis pesan… atau ketik /"
+    attachFile = "Lampirkan berkas"
+    removeFile = "Hapus lampiran"
+    attachTooLarge = "Berkas terlalu besar (maks 6 MB)"
+    attachUnreadable = "Gagal membaca berkas"
+    send = "Kirim"
+    attachments = { "$it lampiran" }
+    revertHere = "Revert ke sini"
+    showThinking = "Sembunyikan pemikiran"
+    hideThinking = "Lihat pemikiran"
+    thinkingCount = { "Lihat pemikiran ($it)" }
+    copy = "Salin"
+    copied = "Disalin ✓"
+    back = "Kembali"
+    menu = "Menu"
+    agentTitle = "Agent"
+    noAgents = "Tidak ada agent."
+    active = "aktif"
+    pick = "Pilih"
+    commandsTitle = "Perintah"
+    noCommands = "Tidak ada perintah."
+    use = "Pakai"
+    revertToMessage = { "Revert ke pesan ${it.take(8)}" }
+    noFilesChanged = "Tidak ada berkas yang berubah pada langkah ini."
+    filesWillRevert = { "$it berkas akan dikembalikan:" }
+    cancelBtn = "Batalkan"
+    applyRevert = "Terapkan revert"
+    approvalTitle = { "Persetujuan tool ($it)" }
+    reject = "Tolak"
+    allow = "Izinkan"
+    always = "Selalu"
+    sendFail = "gagal mengirim"
+    compactFail = "gagal ringkas"
+    revertFail = "gagal revert"
+    pickModel = "Pilih model"
+    capsTitle = "Kapabilitas"
+    tabAgents = "Agent"
+    tabCommands = "Perintah"
+    tabSkills = "Skill"
+    noAgentsShort = "Tidak ada agent."
+    noCommandsShort = "Tidak ada perintah."
+    noSkills = "Tidak ada skill."
+    modeFmt = { "mode: $it" }
+    commandHint = { "ketik /$it di kolom chat" }
+    slashTag = "slash"
+    backToList = "‹ Daftar"
+    filesTitle = "Files"
+    reloadFiles = "Muat ulang"
+    searchFile = "Cari file…"
+    search = "Cari"
+    closeSearch = "Tutup pencarian"
+    loading = "memuat…"
+    empty = "Kosong."
+    previewFail = "(gagal tampilkan gambar)"
+    providersTitle = "Penyedia AI"
+    providersHelp = "Isi API key per provider — tersimpan terenkripsi di HP dan disuntik otomatis tiap server nyala. Berlaku setelah Stop → Start ulang. Model gratis Zen: daftar di opencode.ai/auth (boleh lewat browser HP), buat API key, tempel di provider OpenCode di bawah."
+    envFmt = { "Env: $it" }
+    savedHintReplace = "tersimpan (isi untuk ganti)"
+    pasteKey = "tempel API key…"
+    saveKey = "Simpan"
+    deleteKey = "Hapus"
+    keyDeleted = { "Kunci $it dihapus." }
+    keySaved = { "Kunci $it tersimpan. Stop → Start agar berlaku." }
+    viaJson = "Kunci diatur via opencode.json di server untuk provider ini."
+    modelsLabel = "Model:"
+    free = "Gratis"
+    othersCount = { "+$it lainnya" }
+    modelsCount = { "$it model" }
+    searchHint = "Cari…"
+    noModels = "Tidak ada model dari server. Pastikan penyedia sudah dikonfigurasi (butuh login/API key di server opencode)."
+    unsupportedHidden = { "$it model disembunyikan (tak didukung engine)" }
+    activeBadge = "Aktif"
+    customProvidersTitle = "Provider kustom (OpenAI-compatible)"
+    customProvidersHelp = "Endpoint /v1 bergaya OpenAI: LM Studio, llama.cpp, vLLM, Ollama, OpenRouter, dll. Ditulis ke opencode.json server \u2014 Stop \u2192 Start ulang agar berlaku."
+    customAdd = "+ Tambah"
+    customEmpty = "Belum ada provider kustom."
+    customNameLabel = "Nama"
+    customBaseUrlLabel = "Base URL (berakhir /v1)"
+    customModelsHintLabel = "Model ID (pisah koma, opsional)"
+    customModelsHint = "mis. qwen2.5-coder:7b, gpt-4o-mini"
+    customApiKeyLabel = "API key (opsional)"
+    customSaveFailed = "Gagal menyimpan (opencode.json server tidak valid atau tak bisa ditulis)."
+    customNeedDistro = "Pasang distro Alpine dulu (tab Engine) untuk menyimpan config."
+    customInvalid = "Nama dan Base URL wajib diisi."
+    customSavedNotice = "Provider kustom disimpan. Stop \u2192 Start agar berlaku."
+    customDeletedNotice = { "Provider $it dihapus." }
+    customEdit = "Edit"
+    customEditTitle = "Edit Provider"
+    customScan = "Scan"
+    customScanApply = { "Pakai $it model" }
+    customScanEmpty = "Tidak ada model ditemukan di endpoint."
+    customApply = "Terapkan"
+    customApplyHint = { keep, total -> "Simpan $keep dari $total provider" }
+    customKeepAll = "Semua"
+    integrationsTitle = "Integrasi"
+    integrationsOpen = "Integrasi & OAuth (Zen)…"
+    integrationsHelp = "Hubungkan integrasi server (mis. opencode Zen) lewat OAuth atau API key. Kredensial disimpan di server; Stop \u2192 Start ulang agar berlaku."
+    noIntegrations = "Tidak ada integrasi dari server."
+    searchIntegrations = "Cari integrasi…"
+    noIntegrationsMatch = "Tidak ada integrasi yang cocok."
+    connectBrowser = "Masuk via browser"
+    connectKey = "Masukkan API key"
+    connectExternal = "Gunakan kredensial lokal"
+    connected = "Terhubung"
+    connLabel = { "\u2022 $it" }
+    envProvided = { "via env: $it" }
+    oauthInstructions = "Buka tautan untuk mengizinkan, lalu kembali ke sini."
+    oauthOpenBrowser = "Buka browser"
+    oauthCodeLabel = "Tempel kode otorisasi"
+    finishConnect = "Selesaikan"
+    cancelConnect = "Batalkan"
+    oauthPending = "Menunggu otorisasi…"
+    oauthFailed = { "Gagal: $it" }
+    oauthExpired = "Sesi otorisasi kedaluwarsa."
+    connecting = "Memulai…"
+    disconnect = "Putuskan"
+    disconnected = "Koneksi diputus."
+    disconnectConfirm = { "Putuskan koneksi \"$it\"? Token akan dihapus dari server." }
+    reconnectNeeded = "perlu hubung ulang"
+    restartToApply = "Berhasil terhubung. Mulai ulang server agar berlaku."
+    restartNow = "Mulai ulang"
+    runningTool = { "menjalankan $it…" }
+    questionTitle = { "Pertanyaan agent ($it)" }
+    submitAnswers = "Kirim jawaban"
+    rejectQuestion = "Tolak"
+    ownAnswer = "Tulis jawaban sendiri…"
+    multipleHint = "Boleh pilih lebih dari satu"
+    compactCommandDesc = "Ringkas percakapan jadi poin-poin konteks"
+    compactPrompt = "Ringkas percakapan ini sejauh ini menjadi poin-poin padat: keputusan penting, perubahan berkas kunci, hal yang belum selesai, dan langkah berikutnya. Ringkas saja tanpa menjalankan tool."
+    navSettings = "Pengaturan"
+    navBuild = "Build"
+    buildTitle = "Build APK"
+    buildProject = "Proyek"
+    buildRefresh = "Muat ulang"
+    buildToolchain = "Toolchain"
+    buildToolchainOk = "siap"
+    buildToolchainMissing = "belum siap"
+    buildSetup = "Siapkan toolchain (≈2 GB)"
+    buildRun = "Build assembleDebug"
+    buildCancel = "Batal"
+    buildRunning = "Build berjalan…"
+    buildLog = "Log build"
+    buildResult = "Hasil"
+    buildSuccess = "Build sukses"
+    buildFailed = "Build gagal"
+    buildNoApk = "Belum ada APK"
+    buildPickFolder = "Pilih folder tujuan"
+    buildCopied = "Tersalin: "
+    buildCopyFailed = "Gagal menyalin: "
+    adbTitle = "ADB wireless"
+    adbIp = "IP perangkat"
+    adbPairPort = "Port pairing"
+    adbCode = "Kode pairing"
+    adbConnectPort = "Port connect"
+    adbPair = "Pair"
+    adbConnect = "Connect"
+    adbInstall = "Pasang APK"
+    adbInstallWarn = "App akan dimatikan Android — sesi berjalan terputus."
+    settingsLanguage = "Bahasa"
+    settingsTheme = "Tema"
+    settingsServer = "Server"
+    settingsIntegrations = "Integrasi"
+    settingsGitPat = "GitHub PAT"
+    settingsAbout = "Tentang"
+    themeLight = "Terang"
+    themeDark = "Gelap"
+    serverSaved = "Kredensial server tersimpan."
+    gitPatHelp = "Disimpan terenkripsi & ditulis ke git-credentials proot."
+    gitPatPlaceholder = "ghp_... atau token klasik"
+    gitPatSaved = "GitHub PAT tersimpan & disinkronkan."
+    gitPatDeleted = "GitHub PAT dihapus."
+    settingsEngine = "Engine opencode"
+    arenaTitle = "Arena AI"
+    arenaSubtitle = "Chat AI via browser bawaan"
+    arenaOpen = "Buka Arena AI"
+    arenaImportDownloads = "Impor dari Downloads"
+    arenaImported = { "Berhasil impor $it berkas ke workspace" }
+    engineInstalled = { v -> "Terpasang: v$v" }
+    engineNotInstalled = "Belum terpasang"
+    engineAutoUpdate = "Perbarui otomatis"
+    engineAutoUpdateHelp = "Saat app dibuka, cek rilis opencode terbaru dan pasang otomatis bila ada."
+    engineCheck = "Cek pembaruan"
+    engineChecking = "Memeriksa…"
+    engineUpToDate = { v -> "Sudah terbaru (v$v)." }
+    engineUpdateAvailable = { latest, cur -> "Tersedia v$latest (kini v$cur)." }
+    engineUpdateNow = "Perbarui sekarang"
+    engineUpdating = "Memperbarui…"
+    engineUpdated = { v -> "Diperbarui ke v$v. Server dihentikan - start ulang." }
+    engineUpdateFailed = { m -> "Gagal memperbarui: $m" }
+    engineCheckFailed = "Gagal cek pembaruan (offline?)."
+    navDistro = "Distro"
+    pickDistroTitle = "Pilih distro"
+    distroRuntime = "Runtime"
+    distroRuntimeProot = "Proot (rootfs sendiri)"
+    distroRuntimeTermux = "Termux (app terpasang)"
+    distroActive = "Aktif"
+    distroInstalled = "Terpasang"
+    distroNotInstalled = "Belum terpasang"
+    distroInstall = "Unduh & pasang"
+    distroRemove = "Hapus"
+    distroCustomUrl = "URL rootfs"
+    distroCustomUrlHint = "https://…/rootfs.tar.gz atau .tar.xz"
+    distroPackageManager = "Package manager"
+    distroSize = "Ukuran"
+    distroTermuxAllow = "Izinkan di Termux"
+    distroTermuxOpen = "Buka Termux"
+    distroProotMissing = "Binary proot tidak ada di APK ini — build ulang dengan jaringan (task downloadProotBinaries)."
+    distroSaved = "Distro disimpan."
+    distroOpen = "Buka pengaturan distro"
+    distroSummary = "Pilih runtime eksekusi command (proot atau Termux) dan distro rootfs yang dipakai."
+    distroNotAvailable = "Tidak tersedia untuk arsitektur perangkat ini."
+    distroGroupOther = "Lain-lain"
+    distroGroupCustom = "Kustom"
+    distroReinstall = "Unduh ulang"
+    distroDownloading = "Mengunduh rootfs…"
+    distroNotInstalledYet = "Belum terpasang — mengunduh dulu."
+    distroInstallCancelled = "Unduhan dibatalkan."
+    distroInstallBusy = "Sudah ada unduhan lain yang jalan."
+    distroRestartHint = "Restart server (Stop lalu jalankan lagi) untuk menerapkan distro baru."
+}
 
-private val en = Strings(
-    appName = "Arkacode",
-    stop = "Stop",
-    retry = "Try again",
-    tagline = { v, p -> "server running · opencode v$v · port $p" },
-    sessionsCount = { "Sessions ($it)" },
-    newSession = "+ Session",
-    reload = "Reload",
-    loadingSessions = "loading…",
-    loadSessionsFailed = "failed to load sessions.",
-    noSessions = "No sessions yet. Tap + Session to start chatting.",
-    noTitle = "(untitled)",
-    renameSession = "Rename session",
-    name = "Name",
-    save = "Save",
-    cancel = "Cancel",
-    hideSession = "Hide session?",
-    hideSessionBody = "The session is hidden from this list. The opencode server has no delete-session API, so the data stays on the server.",
-    hide = "Hide",
-    preparing = "Preparing opencode…",
-    failedPrefix = "Failed: ",
-    port = "Port",
-    serverPassword = "Server password",
-    showPassword = "Show password",
-    hidePassword = "Hide password",
-    navSessions = "Sessions",
-    navAI = "Provider",
-    navCaps = "Capabilities",
-    titleFallback = "Session",
-    modelServer = "Server model",
-    agentFallback = "agent",
-    close = "Close",
-    chatTab = "Chat",
-    filesTab = "Files",
-    working = "working…",
-    emptyReply = "Model returned no text (empty reply).",
-    menuAgent = "Agent…",
-    menuCommands = "Commands…",
-    menuCompact = "Compact conversation",
-    menuRevertLast = "Revert to last message",
-    writeMessage = "Type a message…",
-    slashHint = "Type a message… or type /",
-    attachFile = "Attach file",
-    removeFile = "Remove attachment",
-    attachTooLarge = "File too large (max 6 MB)",
-    attachUnreadable = "Could not read file",
-    send = "Send",
-    attachments = { "$it attachment(s)" },
-    revertHere = "Revert to here",
-    showThinking = "Hide thinking",
-    hideThinking = "Show thinking",
-    thinkingCount = { "Show thinking ($it)" },
-    copy = "Copy",
-    copied = "Copied ✓",
-    back = "Back",
-    menu = "Menu",
-    agentTitle = "Agent",
-    noAgents = "No agents.",
-    active = "active",
-    pick = "Pick",
-    commandsTitle = "Commands",
-    noCommands = "No commands.",
-    use = "Use",
-    revertToMessage = { "Revert to message ${it.take(8)}" },
-    noFilesChanged = "No files changed on this step.",
-    filesWillRevert = { "$it file(s) will be restored:" },
-    cancelBtn = "Cancel",
-    applyRevert = "Apply revert",
-    approvalTitle = { "Tool approval ($it)" },
-    reject = "Reject",
-    allow = "Allow",
-    always = "Always",
-    sendFail = "failed to send",
-    compactFail = "failed to compact",
-    revertFail = "failed to revert",
-    pickModel = "Pick a model",
-    capsTitle = "Capabilities",
-    tabAgents = "Agents",
-    tabCommands = "Commands",
-    tabSkills = "Skills",
-    noAgentsShort = "No agents.",
-    noCommandsShort = "No commands.",
-    noSkills = "No skills.",
-    modeFmt = { "mode: $it" },
-    commandHint = { "type /$it in the chat box" },
-    slashTag = "slash",
-    backToList = "‹ List",
-    filesTitle = "Files",
-    reloadFiles = "Reload",
-    searchFile = "Find a file…",
-    search = "Search",
-    closeSearch = "Close search",
-    loading = "loading…",
-    empty = "Empty.",
-    previewFail = "(failed to show image)",
-    providersTitle = "AI Providers",
-    providersHelp = "Set an API key per provider — stored encrypted on the phone and injected automatically each time the server starts. Takes effect after Stop → Start. Free Zen models: register at opencode.ai/auth (browser on phone is fine), create an API key, paste it under the OpenCode provider below.",
-    envFmt = { "Env: $it" },
-    savedHintReplace = "saved (type to replace)",
-    pasteKey = "paste API key…",
-    saveKey = "Save",
-    deleteKey = "Delete",
-    keyDeleted = { "Key for $it deleted." },
-    keySaved = { "Key for $it saved. Stop → Start to apply." },
-    viaJson = "Key is configured via opencode.json on the server for this provider.",
-    modelsLabel = "Models:",
-    free = "Free",
-    othersCount = { "+$it more" },
-    modelsCount = { "$it model(s)" },
-    searchHint = "Search…",
-    noModels = "No models from the server. Make sure a provider is configured (needs login/API key on the opencode server).",
-    unsupportedHidden = { "$it model(s) hidden (unsupported by engine)" },
-    activeBadge = "Active",
-    customProvidersTitle = "Custom providers (OpenAI-compatible)",
-    customProvidersHelp = "OpenAI-style /v1 endpoints: LM Studio, llama.cpp, vLLM, Ollama, OpenRouter, etc. Written to the server's opencode.json \u2014 Stop \u2192 Start to apply.",
-    customAdd = "+ Add",
-    customEmpty = "No custom providers yet.",
-    customNameLabel = "Name",
-    customBaseUrlLabel = "Base URL (ends with /v1)",
-    customModelsHintLabel = "Model IDs (comma-separated, optional)",
-    customModelsHint = "e.g. qwen2.5-coder:7b, gpt-4o-mini",
-    customApiKeyLabel = "API key (optional)",
-    customSaveFailed = "Save failed (server opencode.json is invalid or not writable).",
-    customNeedDistro = "Install the Alpine distro first (Engine tab) to save config.",
-    customInvalid = "Name and Base URL are required.",
-    customSavedNotice = "Custom provider saved. Stop \u2192 Start to apply.",
-    customDeletedNotice = { "Provider $it deleted." },
-    customEdit = "Edit",
-    customEditTitle = "Edit Provider",
-    customScan = "Scan",
-    customScanApply = { "Use $it models" },
-    customScanEmpty = "No models found at endpoint.",
-    customApply = "Apply",
-    customApplyHint = { keep, total -> "Keep $keep of $total providers" },
-    customKeepAll = "All",
-    integrationsTitle = "Integrations",
-    integrationsOpen = "Integrations & OAuth (Zen)…",
-    integrationsHelp = "Connect server integrations (e.g. opencode Zen) via OAuth or API key. Credentials are stored on the server; Stop \u2192 Start to apply.",
-    noIntegrations = "No integrations from the server.",
-    searchIntegrations = "Search integrations…",
-    noIntegrationsMatch = "No matching integrations.",
-    connectBrowser = "Sign in with browser",
-    connectKey = "Enter API key",
-    connectExternal = "Use local credentials",
-    connected = "Connected",
-    connLabel = { "\u2022 $it" },
-    envProvided = { "via env: $it" },
-    oauthInstructions = "Open the link to authorize, then return here.",
-    oauthOpenBrowser = "Open browser",
-    oauthCodeLabel = "Paste authorization code",
-    finishConnect = "Finish",
-    cancelConnect = "Cancel",
-    oauthPending = "Waiting for authorization…",
-    oauthFailed = { "Failed: $it" },
-    oauthExpired = "Authorization session expired.",
-    connecting = "Starting…",
-    disconnect = "Disconnect",
-    disconnected = "Disconnected.",
-    disconnectConfirm = { "Disconnect \"$it\"? The stored token will be removed from the server." },
-    reconnectNeeded = "needs reconnect",
-    restartToApply = "Connected. Restart the server to apply.",
-    restartNow = "Restart",
-    runningTool = { "running $it…" },
-    questionTitle = { "Agent question ($it)" },
-    submitAnswers = "Submit answers",
-    rejectQuestion = "Reject",
-    ownAnswer = "Type your own answer…",
-    multipleHint = "Select all that apply",
-    compactCommandDesc = "Summarize the conversation into context points",
-    compactPrompt = "Summarize this conversation so far into dense bullet points: key decisions, important file changes, open items, and next steps. Just summarize without running any tools.",
-    navSettings = "Settings",
-    navBuild = "Build",
-    buildTitle = "Build APK",
-    buildProject = "Project",
-    buildRefresh = "Refresh",
-    buildToolchain = "Toolchain",
-    buildToolchainOk = "ready",
-    buildToolchainMissing = "not ready",
-    buildSetup = "Set up toolchain (≈2 GB)",
-    buildRun = "Build assembleDebug",
-    buildCancel = "Cancel",
-    buildRunning = "Build running…",
-    buildLog = "Build log",
-    buildResult = "Result",
-    buildSuccess = "Build succeeded",
-    buildFailed = "Build failed",
-    buildNoApk = "No APK yet",
-    buildPickFolder = "Choose destination folder",
-    buildCopied = "Copied: ",
-    buildCopyFailed = "Copy failed: ",
-    adbTitle = "Wireless ADB",
-    adbIp = "Device IP",
-    adbPairPort = "Pairing port",
-    adbCode = "Pairing code",
-    adbConnectPort = "Connect port",
-    adbPair = "Pair",
-    adbConnect = "Connect",
-    adbInstall = "Install APK",
-    adbInstallWarn = "The app will be killed by Android — the running session ends.",
-    settingsLanguage = "Language",
-    settingsTheme = "Theme",
-    settingsServer = "Server",
-    settingsIntegrations = "Integrations",
-    settingsGitPat = "GitHub PAT",
-    settingsAbout = "About",
-    themeLight = "Light",
-    themeDark = "Dark",
-    serverSaved = "Server credentials saved.",
-    gitPatHelp = "Stored encrypted & synced to proot git-credentials.",
-    gitPatPlaceholder = "ghp_... or classic token",
-    gitPatSaved = "GitHub PAT saved & synced.",
-    gitPatDeleted = "GitHub PAT removed.",
-    settingsEngine = "opencode engine",
-    arenaTitle = "Arena AI",
-    arenaSubtitle = "Chat AI via built-in browser",
-    arenaOpen = "Open Arena AI",
-    arenaImportDownloads = "Import from Downloads",
-    arenaImported = { "Imported $it file(s) to workspace" },
-    engineInstalled = { v -> "Installed: v$v" },
-    engineNotInstalled = "Not installed",
-    engineAutoUpdate = "Auto-update",
-    engineAutoUpdateHelp = "On app launch, check for the newest opencode release and install it automatically.",
-    engineCheck = "Check for update",
-    engineChecking = "Checking…",
-    engineUpToDate = { v -> "Already up to date (v$v)." },
-    engineUpdateAvailable = { latest, cur -> "v$latest available (currently v$cur)." },
-    engineUpdateNow = "Update now",
-    engineUpdating = "Updating…",
-    engineUpdated = { v -> "Updated to v$v. Server stopped - start again." },
-    engineUpdateFailed = { m -> "Update failed: $m" },
-    engineCheckFailed = "Update check failed (offline?).",
-    navDistro = "Distro",
-    pickDistroTitle = "Pick a distro",
-    distroRuntime = "Runtime",
-    distroRuntimeProot = "Proot (own rootfs)",
-    distroRuntimeTermux = "Termux (installed app)",
-    distroActive = "Active",
-    distroInstalled = "Installed",
-    distroNotInstalled = "Not installed",
-    distroInstall = "Download & install",
-    distroRemove = "Remove",
-    distroCustomUrl = "Rootfs URL",
-    distroCustomUrlHint = "https://…/rootfs.tar.gz or .tar.xz",
-    distroPackageManager = "Package manager",
-    distroSize = "Size",
-    distroTermuxAllow = "Allow in Termux",
-    distroTermuxOpen = "Open Termux",
-    distroProotMissing = "proot binary is not bundled in this APK — rebuild with network (downloadProotBinaries task).",
-    distroSaved = "Distro saved.",
-    distroOpen = "Open distro settings",
-    distroSummary = "Choose the command runtime (proot or Termux) and the rootfs distro to use.",
-    distroNotAvailable = "Not available for this device architecture.",
-    distroGroupOther = "Others",
-    distroGroupCustom = "Custom",
-    distroReinstall = "Re-download",
-    distroDownloading = "Downloading rootfs…",
-    distroNotInstalledYet = "Not installed yet — downloading it first.",
-    distroInstallCancelled = "Download cancelled.",
-    distroInstallBusy = "Another download is already running.",
-    distroRestartHint = "Restart the server (Stop, then start again) to apply the new distro.",
-)
+private val en = Strings().apply {
+    appName = "Arkacode"
+    stop = "Stop"
+    retry = "Try again"
+    tagline = { v, p -> "server running · opencode v$v · port $p" }
+    sessionsCount = { "Sessions ($it)" }
+    newSession = "+ Session"
+    reload = "Reload"
+    loadingSessions = "loading…"
+    loadSessionsFailed = "failed to load sessions."
+    noSessions = "No sessions yet. Tap + Session to start chatting."
+    noTitle = "(untitled)"
+    renameSession = "Rename session"
+    name = "Name"
+    save = "Save"
+    cancel = "Cancel"
+    hideSession = "Hide session?"
+    hideSessionBody = "The session is hidden from this list. The opencode server has no delete-session API, so the data stays on the server."
+    hide = "Hide"
+    preparing = "Preparing opencode…"
+    failedPrefix = "Failed: "
+    port = "Port"
+    serverPassword = "Server password"
+    showPassword = "Show password"
+    hidePassword = "Hide password"
+    navSessions = "Sessions"
+    navAI = "Provider"
+    navCaps = "Capabilities"
+    titleFallback = "Session"
+    modelServer = "Server model"
+    agentFallback = "agent"
+    close = "Close"
+    chatTab = "Chat"
+    filesTab = "Files"
+    working = "working…"
+    emptyReply = "Model returned no text (empty reply)."
+    menuAgent = "Agent…"
+    menuCommands = "Commands…"
+    menuCompact = "Compact conversation"
+    menuRevertLast = "Revert to last message"
+    writeMessage = "Type a message…"
+    slashHint = "Type a message… or type /"
+    attachFile = "Attach file"
+    removeFile = "Remove attachment"
+    attachTooLarge = "File too large (max 6 MB)"
+    attachUnreadable = "Could not read file"
+    send = "Send"
+    attachments = { "$it attachment(s)" }
+    revertHere = "Revert to here"
+    showThinking = "Hide thinking"
+    hideThinking = "Show thinking"
+    thinkingCount = { "Show thinking ($it)" }
+    copy = "Copy"
+    copied = "Copied ✓"
+    back = "Back"
+    menu = "Menu"
+    agentTitle = "Agent"
+    noAgents = "No agents."
+    active = "active"
+    pick = "Pick"
+    commandsTitle = "Commands"
+    noCommands = "No commands."
+    use = "Use"
+    revertToMessage = { "Revert to message ${it.take(8)}" }
+    noFilesChanged = "No files changed on this step."
+    filesWillRevert = { "$it file(s) will be restored:" }
+    cancelBtn = "Cancel"
+    applyRevert = "Apply revert"
+    approvalTitle = { "Tool approval ($it)" }
+    reject = "Reject"
+    allow = "Allow"
+    always = "Always"
+    sendFail = "failed to send"
+    compactFail = "failed to compact"
+    revertFail = "failed to revert"
+    pickModel = "Pick a model"
+    capsTitle = "Capabilities"
+    tabAgents = "Agents"
+    tabCommands = "Commands"
+    tabSkills = "Skills"
+    noAgentsShort = "No agents."
+    noCommandsShort = "No commands."
+    noSkills = "No skills."
+    modeFmt = { "mode: $it" }
+    commandHint = { "type /$it in the chat box" }
+    slashTag = "slash"
+    backToList = "‹ List"
+    filesTitle = "Files"
+    reloadFiles = "Reload"
+    searchFile = "Find a file…"
+    search = "Search"
+    closeSearch = "Close search"
+    loading = "loading…"
+    empty = "Empty."
+    previewFail = "(failed to show image)"
+    providersTitle = "AI Providers"
+    providersHelp = "Set an API key per provider — stored encrypted on the phone and injected automatically each time the server starts. Takes effect after Stop → Start. Free Zen models: register at opencode.ai/auth (browser on phone is fine), create an API key, paste it under the OpenCode provider below."
+    envFmt = { "Env: $it" }
+    savedHintReplace = "saved (type to replace)"
+    pasteKey = "paste API key…"
+    saveKey = "Save"
+    deleteKey = "Delete"
+    keyDeleted = { "Key for $it deleted." }
+    keySaved = { "Key for $it saved. Stop → Start to apply." }
+    viaJson = "Key is configured via opencode.json on the server for this provider."
+    modelsLabel = "Models:"
+    free = "Free"
+    othersCount = { "+$it more" }
+    modelsCount = { "$it model(s)" }
+    searchHint = "Search…"
+    noModels = "No models from the server. Make sure a provider is configured (needs login/API key on the opencode server)."
+    unsupportedHidden = { "$it model(s) hidden (unsupported by engine)" }
+    activeBadge = "Active"
+    customProvidersTitle = "Custom providers (OpenAI-compatible)"
+    customProvidersHelp = "OpenAI-style /v1 endpoints: LM Studio, llama.cpp, vLLM, Ollama, OpenRouter, etc. Written to the server's opencode.json \u2014 Stop \u2192 Start to apply."
+    customAdd = "+ Add"
+    customEmpty = "No custom providers yet."
+    customNameLabel = "Name"
+    customBaseUrlLabel = "Base URL (ends with /v1)"
+    customModelsHintLabel = "Model IDs (comma-separated, optional)"
+    customModelsHint = "e.g. qwen2.5-coder:7b, gpt-4o-mini"
+    customApiKeyLabel = "API key (optional)"
+    customSaveFailed = "Save failed (server opencode.json is invalid or not writable)."
+    customNeedDistro = "Install the Alpine distro first (Engine tab) to save config."
+    customInvalid = "Name and Base URL are required."
+    customSavedNotice = "Custom provider saved. Stop \u2192 Start to apply."
+    customDeletedNotice = { "Provider $it deleted." }
+    customEdit = "Edit"
+    customEditTitle = "Edit Provider"
+    customScan = "Scan"
+    customScanApply = { "Use $it models" }
+    customScanEmpty = "No models found at endpoint."
+    customApply = "Apply"
+    customApplyHint = { keep, total -> "Keep $keep of $total providers" }
+    customKeepAll = "All"
+    integrationsTitle = "Integrations"
+    integrationsOpen = "Integrations & OAuth (Zen)…"
+    integrationsHelp = "Connect server integrations (e.g. opencode Zen) via OAuth or API key. Credentials are stored on the server; Stop \u2192 Start to apply."
+    noIntegrations = "No integrations from the server."
+    searchIntegrations = "Search integrations…"
+    noIntegrationsMatch = "No matching integrations."
+    connectBrowser = "Sign in with browser"
+    connectKey = "Enter API key"
+    connectExternal = "Use local credentials"
+    connected = "Connected"
+    connLabel = { "\u2022 $it" }
+    envProvided = { "via env: $it" }
+    oauthInstructions = "Open the link to authorize, then return here."
+    oauthOpenBrowser = "Open browser"
+    oauthCodeLabel = "Paste authorization code"
+    finishConnect = "Finish"
+    cancelConnect = "Cancel"
+    oauthPending = "Waiting for authorization…"
+    oauthFailed = { "Failed: $it" }
+    oauthExpired = "Authorization session expired."
+    connecting = "Starting…"
+    disconnect = "Disconnect"
+    disconnected = "Disconnected."
+    disconnectConfirm = { "Disconnect \"$it\"? The stored token will be removed from the server." }
+    reconnectNeeded = "needs reconnect"
+    restartToApply = "Connected. Restart the server to apply."
+    restartNow = "Restart"
+    runningTool = { "running $it…" }
+    questionTitle = { "Agent question ($it)" }
+    submitAnswers = "Submit answers"
+    rejectQuestion = "Reject"
+    ownAnswer = "Type your own answer…"
+    multipleHint = "Select all that apply"
+    compactCommandDesc = "Summarize the conversation into context points"
+    compactPrompt = "Summarize this conversation so far into dense bullet points: key decisions, important file changes, open items, and next steps. Just summarize without running any tools."
+    navSettings = "Settings"
+    navBuild = "Build"
+    buildTitle = "Build APK"
+    buildProject = "Project"
+    buildRefresh = "Refresh"
+    buildToolchain = "Toolchain"
+    buildToolchainOk = "ready"
+    buildToolchainMissing = "not ready"
+    buildSetup = "Set up toolchain (≈2 GB)"
+    buildRun = "Build assembleDebug"
+    buildCancel = "Cancel"
+    buildRunning = "Build running…"
+    buildLog = "Build log"
+    buildResult = "Result"
+    buildSuccess = "Build succeeded"
+    buildFailed = "Build failed"
+    buildNoApk = "No APK yet"
+    buildPickFolder = "Choose destination folder"
+    buildCopied = "Copied: "
+    buildCopyFailed = "Copy failed: "
+    adbTitle = "Wireless ADB"
+    adbIp = "Device IP"
+    adbPairPort = "Pairing port"
+    adbCode = "Pairing code"
+    adbConnectPort = "Connect port"
+    adbPair = "Pair"
+    adbConnect = "Connect"
+    adbInstall = "Install APK"
+    adbInstallWarn = "The app will be killed by Android — the running session ends."
+    settingsLanguage = "Language"
+    settingsTheme = "Theme"
+    settingsServer = "Server"
+    settingsIntegrations = "Integrations"
+    settingsGitPat = "GitHub PAT"
+    settingsAbout = "About"
+    themeLight = "Light"
+    themeDark = "Dark"
+    serverSaved = "Server credentials saved."
+    gitPatHelp = "Stored encrypted & synced to proot git-credentials."
+    gitPatPlaceholder = "ghp_... or classic token"
+    gitPatSaved = "GitHub PAT saved & synced."
+    gitPatDeleted = "GitHub PAT removed."
+    settingsEngine = "opencode engine"
+    arenaTitle = "Arena AI"
+    arenaSubtitle = "Chat AI via built-in browser"
+    arenaOpen = "Open Arena AI"
+    arenaImportDownloads = "Import from Downloads"
+    arenaImported = { "Imported $it file(s) to workspace" }
+    engineInstalled = { v -> "Installed: v$v" }
+    engineNotInstalled = "Not installed"
+    engineAutoUpdate = "Auto-update"
+    engineAutoUpdateHelp = "On app launch, check for the newest opencode release and install it automatically."
+    engineCheck = "Check for update"
+    engineChecking = "Checking…"
+    engineUpToDate = { v -> "Already up to date (v$v)." }
+    engineUpdateAvailable = { latest, cur -> "v$latest available (currently v$cur)." }
+    engineUpdateNow = "Update now"
+    engineUpdating = "Updating…"
+    engineUpdated = { v -> "Updated to v$v. Server stopped - start again." }
+    engineUpdateFailed = { m -> "Update failed: $m" }
+    engineCheckFailed = "Update check failed (offline?)."
+    navDistro = "Distro"
+    pickDistroTitle = "Pick a distro"
+    distroRuntime = "Runtime"
+    distroRuntimeProot = "Proot (own rootfs)"
+    distroRuntimeTermux = "Termux (installed app)"
+    distroActive = "Active"
+    distroInstalled = "Installed"
+    distroNotInstalled = "Not installed"
+    distroInstall = "Download & install"
+    distroRemove = "Remove"
+    distroCustomUrl = "Rootfs URL"
+    distroCustomUrlHint = "https://…/rootfs.tar.gz or .tar.xz"
+    distroPackageManager = "Package manager"
+    distroSize = "Size"
+    distroTermuxAllow = "Allow in Termux"
+    distroTermuxOpen = "Open Termux"
+    distroProotMissing = "proot binary is not bundled in this APK — rebuild with network (downloadProotBinaries task)."
+    distroSaved = "Distro saved."
+    distroOpen = "Open distro settings"
+    distroSummary = "Choose the command runtime (proot or Termux) and the rootfs distro to use."
+    distroNotAvailable = "Not available for this device architecture."
+    distroGroupOther = "Others"
+    distroGroupCustom = "Custom"
+    distroReinstall = "Re-download"
+    distroDownloading = "Downloading rootfs…"
+    distroNotInstalledYet = "Not installed yet — downloading it first."
+    distroInstallCancelled = "Download cancelled."
+    distroInstallBusy = "Another download is already running."
+    distroRestartHint = "Restart the server (Stop, then start again) to apply the new distro."
+}
 
 /** Registry bahasa global (state Compose → recompose otomatis saat diganti). */
 object I18n {
