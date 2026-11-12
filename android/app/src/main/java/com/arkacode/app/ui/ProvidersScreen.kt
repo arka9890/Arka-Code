@@ -31,10 +31,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.util.concurrent.TimeUnit
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -49,6 +52,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.size
 import com.arkacode.app.core.DistroSpec
 import com.arkacode.app.core.OpenCodeConfig
 import com.arkacode.app.core.SecureStore
@@ -102,6 +106,10 @@ fun ProvidersScreen(
     var custom by remember { mutableStateOf(listOf<OpenCodeConfig.CustomProvider>()) }
     var distroReady by remember { mutableStateOf(true) }
     var showAddCustom by remember { mutableStateOf(false) }
+    var editProvider by remember { mutableStateOf<OpenCodeConfig.CustomProvider?>(null) }
+    var keepSet by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var scanning by remember { mutableStateOf(false) }
+    var scanResult by remember { mutableStateOf<List<String>?>(null) }
 
     fun load() {
         loading = true
@@ -129,20 +137,72 @@ fun ProvidersScreen(
         }
     }
 
-    fun saveCustom(name: String, baseUrl: String, modelsCsv: String, apiKey: String) {
+    fun saveCustom(name: String, baseUrl: String, modelsCsv: String, apiKey: String, fixedId: String? = null) {
         scope.launch {
             val ok = withContext(Dispatchers.IO) {
-                val id = OpenCodeConfig.makeId(name, OpenCodeConfig.existingIds(context, distroSpec))
+                val id = fixedId ?: OpenCodeConfig.makeId(name, OpenCodeConfig.existingIds(context, distroSpec))
                 val models = modelsCsv.split(',', '\n').map { it.trim() }.filter { it.isNotEmpty() }
                 OpenCodeConfig.upsert(context, distroSpec, id, name, baseUrl, models, newKey = apiKey.ifBlank { null })
             }
             custom = withContext(Dispatchers.IO) { OpenCodeConfig.listCustom(context, distroSpec) }
             if (ok) {
                 showAddCustom = false
+                editProvider = null
                 notice = I18n.s.customSavedNotice
             } else {
                 notice = I18n.s.customSaveFailed
             }
+        }
+    }
+
+    fun scanModels(baseUrl: String, key: String) {
+        scanning = true
+        scanResult = null
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val okClient = OkHttpClient.Builder()
+                        .connectTimeout(10, TimeUnit.SECONDS)
+                        .readTimeout(15, TimeUnit.SECONDS)
+                        .build()
+                    val url = baseUrl.trim().removeSuffix("/") + "/models"
+                    val builder = Request.Builder().url(url).get()
+                    if (key.isNotBlank()) builder.header("Authorization", "Bearer $key")
+                    val resp = okClient.newCall(builder.build()).execute()
+                    resp.use { r ->
+                        if (!r.isSuccessful) throw IllegalStateException("HTTP ${r.code}")
+                        val body = r.body?.string() ?: ""
+                        val modelsArr = org.json.JSONArray(body)
+                        val out = mutableListOf<String>()
+                        for (i in 0 until modelsArr.length()) {
+                            val el = modelsArr.opt(i)
+                            if (el is org.json.JSONObject) {
+                                el.optString("id").ifBlank { el.optString("name") }.ifBlank { null }?.let { out.add(it) }
+                            }
+                        }
+                        out
+                    }
+                }.getOrNull()
+            }
+            scanning = false
+            scanResult = result ?: emptyList()
+        }
+    }
+
+    fun applyKeep() {
+        scope.launch {
+            val keep = keepSet.toMutableSet()
+            val ok = withContext(Dispatchers.IO) {
+                val toRemove = custom.filter { it.id !in keep }
+                var allOk = true
+                toRemove.forEach { p ->
+                    val r = OpenCodeConfig.remove(context, distroSpec, p.id)
+                    if (!r) allOk = false
+                }
+                allOk
+            }
+            custom = withContext(Dispatchers.IO) { OpenCodeConfig.listCustom(context, distroSpec) }
+            notice = if (ok) I18n.s.customSavedNotice else I18n.s.customSaveFailed
         }
     }
 
@@ -252,6 +312,12 @@ fun ProvidersScreen(
                                     fontWeight = FontWeight.SemiBold,
                                     modifier = Modifier.weight(1f),
                                 )
+                                TextButton(onClick = {
+                                    keepSet = custom.map { it.id }.toSet()
+                                    showAddCustom = false
+                                }, enabled = custom.isNotEmpty()) {
+                                    Text(I18n.s.customApply)
+                                }
                                 TextButton(onClick = { showAddCustom = true }, enabled = distroReady) {
                                     Text(I18n.s.customAdd)
                                 }
@@ -276,10 +342,26 @@ fun ProvidersScreen(
                                 )
                             } else {
                                 custom.forEach { p ->
+                                    val checked = keepSet.isEmpty() || p.id in keepSet
                                     Row(
                                         Modifier.fillMaxWidth(),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
+                                        Row(
+                                            Modifier.clickable {
+                                                if (keepSet.isEmpty()) keepSet = custom.map { it.id }.toSet()
+                                                keepSet = if (checked) keepSet - p.id else keepSet + p.id
+                                            },
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Text(
+                                                if (checked) "☑" else "☐",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = if (checked) MaterialTheme.colorScheme.tertiary
+                                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                            Spacer(Modifier.width(4.dp))
+                                        }
                                         Column(Modifier.weight(1f)) {
                                             Text(
                                                 p.name,
@@ -296,7 +378,9 @@ fun ProvidersScreen(
                                         }
                                         if (p.hasKey) {
                                             Text("🔑", style = MaterialTheme.typography.labelSmall)
+                                            Spacer(Modifier.width(4.dp))
                                         }
+                                        TextButton(onClick = { editProvider = p }) { Text(I18n.s.customEdit) }
                                         TextButton(onClick = {
                                             scope.launch {
                                                 val ok = withContext(Dispatchers.IO) {
@@ -428,28 +512,69 @@ fun ProvidersScreen(
     }
 
     if (showAddCustom) {
-        AddCustomProviderDialog(
+        CustomProviderDialog(
+            key = OpenCodeConfig.CustomProvider("", "", "", emptyList(), false),
             onDismiss = { showAddCustom = false },
-            onSave = { name, baseUrl, models, apiKey -> saveCustom(name, baseUrl, models, apiKey) },
+            onSave = { name, baseUrl, models, apiKey ->
+                saveCustom(name, baseUrl, models, apiKey)
+            },
+            onScan = { baseUrl, key -> scanModels(baseUrl, key) },
+            scanning = scanning,
+            scanResult = scanResult,
         )
+    }
+
+    editProvider?.let { p ->
+        CustomProviderDialog(
+            key = p,
+            onDismiss = { editProvider = null },
+            onSave = { name, baseUrl, models, apiKey ->
+                saveCustom(name, baseUrl, models, apiKey, fixedId = p.id)
+            },
+            onScan = { baseUrl, key -> scanModels(baseUrl, key) },
+            scanning = scanning,
+            scanResult = scanResult,
+        )
+    }
+
+    if (keepSet.isNotEmpty() && keepSet.size < custom.size) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = { applyKeep() }) {
+                Text(I18n.s.customApply, color = MaterialTheme.colorScheme.tertiary)
+            }
+            Text(
+                I18n.s.customApplyHint(keepSet.size, custom.size),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.weight(1f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            TextButton(onClick = { keepSet = custom.map { it.id }.toSet() }) {
+                Text(I18n.s.customKeepAll)
+            }
+        }
     }
 }
 
-/** Form tambah provider OpenAI-compatible (ditulis ke opencode.json server). */
+/** Form tambah/edit provider OpenAI-compatible (ditulis ke opencode.json server). */
 @Composable
-private fun AddCustomProviderDialog(
+private fun CustomProviderDialog(
+    key: OpenCodeConfig.CustomProvider,
     onDismiss: () -> Unit,
     onSave: (name: String, baseUrl: String, models: String, apiKey: String) -> Unit,
+    onScan: (baseUrl: String, key: String) -> Unit,
+    scanning: Boolean,
+    scanResult: List<String>?,
 ) {
-    var name by remember { mutableStateOf("") }
-    var baseUrl by remember { mutableStateOf("") }
-    var models by remember { mutableStateOf("") }
-    var apiKey by remember { mutableStateOf("") }
+    val isEdit = key.id.isNotBlank()
+    var name by remember(key) { mutableStateOf(key.name) }
+    var baseUrl by remember(key) { mutableStateOf(key.baseUrl) }
+    var models by remember(key) { mutableStateOf(key.models.joinToString(", ")) }
+    var apiKey by remember(key) { mutableStateOf("") }
     var err by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(I18n.s.customProvidersTitle) },
+        title = { Text(if (isEdit) I18n.s.customEditTitle else I18n.s.customProvidersTitle) },
         text = {
             Column(
                 Modifier
@@ -473,13 +598,36 @@ private fun AddCustomProviderDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                OutlinedTextField(
-                    value = models,
-                    onValueChange = { models = it },
-                    label = { Text(I18n.s.customModelsHintLabel) },
-                    placeholder = { Text(I18n.s.customModelsHint) },
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = models,
+                        onValueChange = { models = it },
+                        label = { Text(I18n.s.customModelsHintLabel) },
+                        placeholder = { Text(I18n.s.customModelsHint) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                    )
+                    OutlinedButton(
+                        onClick = { onScan(baseUrl, apiKey) },
+                        enabled = baseUrl.isNotBlank() && !scanning,
+                    ) {
+                        if (scanning) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                        else Text(I18n.s.customScan)
+                    }
+                }
+                scanResult?.let { sr ->
+                    if (sr.isNotEmpty()) {
+                        TextButton(onClick = {
+                            models = sr.joinToString(", ")
+                        }) { Text(I18n.s.customScanApply(sr.size)) }
+                    } else {
+                        Text(
+                            I18n.s.customScanEmpty,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
                 OutlinedTextField(
                     value = apiKey,
                     onValueChange = { apiKey = it },
