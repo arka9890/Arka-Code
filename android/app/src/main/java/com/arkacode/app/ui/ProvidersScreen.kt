@@ -172,12 +172,27 @@ fun ProvidersScreen(
                     resp.use { r ->
                         if (!r.isSuccessful) throw IllegalStateException("HTTP ${r.code}")
                         val body = r.body?.string() ?: ""
-                        val modelsArr = org.json.JSONArray(body)
                         val out = mutableListOf<String>()
-                        for (i in 0 until modelsArr.length()) {
-                            val el = modelsArr.opt(i)
-                            if (el is org.json.JSONObject) {
-                                el.optString("id").ifBlank { el.optString("name") }.ifBlank { null }?.let { out.add(it) }
+                        // Beberapa API OpenAI-compatible mengembalikan {"data": [...]}, yang lain langsung [...].
+                        try {
+                            val obj = org.json.JSONObject(body)
+                            val data = obj.optJSONArray("data")
+                            if (data != null) {
+                                for (i in 0 until data.length()) {
+                                    val el = data.opt(i)
+                                    if (el is org.json.JSONObject) {
+                                        el.optString("id").ifBlank { el.optString("name") }.ifBlank { null }?.let { out.add(it) }
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            // Fallback: body adalah array langsung.
+                            val modelsArr = org.json.JSONArray(body)
+                            for (i in 0 until modelsArr.length()) {
+                                val el = modelsArr.opt(i)
+                                if (el is org.json.JSONObject) {
+                                    el.optString("id").ifBlank { el.optString("name") }.ifBlank { null }?.let { out.add(it) }
+                                }
                             }
                         }
                         out
