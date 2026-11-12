@@ -3,7 +3,7 @@ package com.arkacode.app.core
 /**
  * Perluas template command/skill menjadi teks prompt siap-kirim.
  *
- * Server `opencode` v1.19 tidak meng-expand slash command pada endpoint prompt
+ * Server `opencode` v2 tidak meng-expand slash command pada endpoint prompt
  * (`/api/session/:id/prompt`), jadi perluasan `$ARGUMENTS` / `$1..$n` dilakukan
  * di klien. Placeholder yang tidak dikenal dibiarkan apa adanya (aman).
  */

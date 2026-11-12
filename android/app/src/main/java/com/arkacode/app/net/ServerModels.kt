@@ -120,7 +120,7 @@ data class FsEntry(val path: String, val isDir: Boolean)
 // ----------------------------------------------------- SSE events (semantik)
 
 /**
- * Event semantik dari SSE `/api/event` (v1.19: `{type, data}`; toleran ke
+ * Event semantik dari SSE `/api/event` (v2: `{type, data}`; toleran ke
  * `properties` legacy). Dipakai ChatScreen untuk update inkremental tanpa
  * selalu re-fetch.
  */

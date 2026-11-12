@@ -42,7 +42,7 @@ class SessionRun {
  * Registry run per sesi. Polling hidup selama [scope] (layar engine), bukan
  * selama layar chat, jadi berpindah sesi tidak membuang pelacakan turn yang
  * masih berjalan. Penyelesaian turn dideteksi dari medan `finish` pesan
- * assistant (server v1.19 tidak mengirim event idle).
+ * assistant (server v2 tidak mengirim event idle).
  */
 class SessionRunRegistry(
     private val scope: CoroutineScope,

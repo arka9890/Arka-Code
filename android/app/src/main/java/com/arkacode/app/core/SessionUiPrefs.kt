@@ -14,7 +14,7 @@ internal val Context.uiPrefsStore by preferencesDataStore(name = "arkacode_ui")
 
 /**
  * Override tampilan daftar sesi (F1+): ganti nama + sembunyikan.
- * Server v1.19 tidak menyediakan rename/hapus sesi, jadi keduanya murni
+ * Server v2 tidak menyediakan rename/hapus sesi, jadi keduanya murni
  * lokal — data di server tidak diubah/dihapus.
  */
 class SessionUiPrefs(private val context: Context) {

@@ -101,7 +101,7 @@ Pola kerja tiap fase (warisan Arka): patch kecil → PR → CI build APK → mer
 ## 8. Status implementasi (di `main`, per 2026-10-14; +SSE semantik/OAuth Zen)
 
 Sudah:
-- F0: skeleton Gradle+CI, proot Alpine, ServerManager (unduh v1.19.0 musl+sha256, `serve` + tunggu health, stop, serve.log), OpenCodeClient (basic-auth, health, GET mentah).
+- F0: skeleton Gradle+CI, proot Alpine, ServerManager (unduh v2.0.31 musl+sha512, `serve` + tunggu health, stop, serve.log), OpenCodeClient (basic-auth, health, GET mentah).
 - Diagnostik engine: tes exec terisolasi, info asset/ABI, log tail di error, `apk libstdc++/libgcc` otomatis, password sampai ke guest env.
 - Auto-provisioning: buka app → pipeline jalan sendiri di layar log → selesai masuk frontend sesi (deteksi server lama, retry, stop/start lagi).
 - F1 chat: kirim async, refresh near-live (poll 2 dtk), abort/interrupt, approval (Tolak/Izinkan/Selalu), salin pesan + blok kode + output tool, picker model per sesi (+ switch server-side), render markdown, thinking collapse, input aman keyboard.
@@ -118,8 +118,8 @@ Sudah:
 - Distro & runtime (layar **Pengaturan → Distro**): katalog distro rootfs — Alpine 3.20 (LTS) / 3.21 / 3.22 / edge, Ubuntu 24.04 LTS / 22.04 LTS (image `ubuntu-base` resmi Canonical) & 25.04, Debian 13 (trixie) / 12 (bookworm), Fedora, Arch Linux, openSUSE, Void, Rocky, AlmaLinux, Manjaro, Deepin, plus "rootfs sendiri" (URL `.tar.gz`/`.tar.xz`/`.zip` atau berkas SAF). Sumber rootfs: CDN Alpine, cdimage Canonical, release `termux/proot-distro` (rootfs multi-distro siap pakai), dan bootstrap resmi `termux/termux-packages`. Tiap distro punya folder sendiri di `files/distro/<id>/` sehingga bisa berganti tanpa unduh ulang; fallback otomatis mencari versi minirootfs terbaru kalau URL yang di-pin sudah dihapus CDN. Format arsip ditangani per sumber: tar datar (Alpine, ubuntu-base), tar ber-folder-teratas yang dilepas (proot-distro), dan zip + manifest `SYMLINKS.txt` (bootstrap Termux). Runtime alternatif **Termux**: `opencode serve` dijalankan di dalam app Termux (butuh `opencode` terpasang di Termux + allowlist script), sehingga tool bash opencode ikut jalan di lingkungan Termux dan rootfs proot tidak dipakai sama sekali. Selain itu tersedia **Termux built-in**: userland Termux asli (bash/pkg/apt) di dalam proot, tanpa perlu memasang app Termux — prefix-nya ditaruh di `/data/data/com.termux/files/usr` sesuai RUNPATH binary Termux, dengan bind `/system` + `/apex` + `/vendor` untuk bionic Android. `ExecRunner` (backend `run_command` internal) juga punya jalur Termux.
 
 Belum:
-- Config editor (bilah berkas opencode.json) — tanpa endpoint tulis fs di v1.19.
-- MCP / share / fork / summarize: server v1.19 tidak menyediakan endpoint-nya (bukan keterbatasan app).
+- Config editor (bilah berkas opencode.json) — tanpa endpoint tulis fs di v2.
+- MCP / share / fork / summarize: server v2 tidak menyediakan endpoint-nya (bukan keterbatasan app).
 
 ## 7. Pertanyaan Terbuka (tidak menghalangi F0)
 

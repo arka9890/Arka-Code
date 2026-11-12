@@ -5,7 +5,7 @@ import com.arkacode.app.net.ModelInfo
 /**
  * Kelayakan model terhadap engine opencode yang dibundel.
  *
- * Engine (v1.19.x, ARM64) hanya mendukung model ber-API `aisdk`
+ * Engine (v2.x, ARM64) hanya mendukung model ber-API `aisdk`
  * (OpenAI-compatible). Model ber-`api.type = "native"` gagal dengan
  * `SessionRunnerModel.UnsupportedApiError`, biasanya setelah tunggu
  * ~20-30 dtk — tampak seperti "lama/hang" padahal sebenarnya error.

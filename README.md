@@ -81,9 +81,9 @@ sampingnya, putih di atas biru brand `#5B9BE0`.
 └──────────────────────────────────────────────────────┘
 ```
 
-- Binary `opencode` pinned **v1.19.0** (Linux musl **arm64**) diunduh dari
-  GitHub Releases + verifikasi sha256. `serve` adalah subcommand headless; TUI
-  tidak pernah dibuka.
+- Binary `opencode` pinned **v2.0.31** (Linux musl **arm64**, paket npm
+  `@opencode/cli`) diunduh dari registry npm + verifikasi sha512. `serve`
+  adalah subcommand headless; TUI tidak pernah dibuka.
 - Server default `127.0.0.1:4096`, basic auth (username `opencode`, password
   disimpan di EncryptedSharedPreferences).
 - Config server: `<rootfs>/root/.config/opencode/opencode.json`; auth:
@@ -268,7 +268,7 @@ Ringkas (detail di [`PRD.md`](PRD.md) §8):
   OpenAI-compatible, integrasi (OAuth/API key), kapabilitas (agent/command/
   skill), **Arena AI (WebView + impor unduhan)**, i18n ID/EN, tema clay
   terang/gelap, backup rules, CI debug + release.
-- **Belum** (keterbatasan server v1.19, bukan app): editor tulis
+- **Belum** (keterbatasan server v2, bukan app): editor tulis
   `opencode.json` berformulir, MCP/share/fork/summarize.
 
 ## Dokumen

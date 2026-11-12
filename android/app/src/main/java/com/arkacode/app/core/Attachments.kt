@@ -12,7 +12,7 @@ import java.io.InputStream
 /**
  * Berkas lampiran siap kirim ke server.
  *
- * [uri] memakai skema `data:<mime>;base64,` — bukan `file:`. OpenCode 1.19
+ * [uri] memakai skema `data:<mime>;base64,` — bukan `file:`. OpenCode v2
  * meneruskan URL `file:` apa adanya ke protokol OpenAI Chat sehingga gambar
  * ditolak dengan "OpenAI Chat media must contain valid base64", sedangkan
  * `data:` lolos pemeriksaan media dan sampai ke model.
