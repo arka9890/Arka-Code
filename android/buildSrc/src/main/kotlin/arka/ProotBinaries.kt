@@ -36,7 +36,7 @@ object ProotBinaries {
      * memperbarui hash, build gagal cepat dengan pesan jelas, bukan diam-diam
      * menghasilkan APK yang tidak bisa menjalankan command.
      */
-    const val PROOT_VERSION = "5.1.107.98"
+    const val PROOT_VERSION = "5.1.107.102"
     const val TALLOC_VERSION = "2.5.0"
     const val SHMEM_VERSION = "0.7"
 
@@ -51,10 +51,10 @@ object ProotBinaries {
      */
     val SHA256: Map<String, Map<String, String>> = mapOf(
         "proot" to mapOf(
-            "aarch64" to "29de40efea4daa2a6168b617915206511c63e8d46bf5f4b07d48723441ef7f3b",
-            "arm" to "23d505c57c5d9fdbe4d6ac669bcb8a25610912c62acddd9a5575f01e56015879",
-            "x86_64" to "1c31ad7e1046f4d418fef19b6dfaa9a14801d2047ade6ad0375b3f5501e3e227",
-            "i686" to "819ce5904a3e851c6675bdea87e4df43745cca08c8a798fa890269682ad4a85c",
+            "aarch64" to "10a394b585c2fc2b2c8502544f4e5f1be581dc8bfff79e8ba62f16207423e030",
+            "arm" to "d6912a83e1a149b3403afc116109d2974b378af599599b0124a68b07b2ca0c78",
+            "x86_64" to "2497064226c15971be8131c7facead94a06c225347796326a383c832dca57758",
+            "i686" to "4029156c3c51d41e95f36b342d4049b40aa7f202e896fac1534d37891623a9a2",
         ),
         "libtalloc" to mapOf(
             "aarch64" to "556591f43bb773ad8777e1a29522640866a55f95dab71914418b94a8c58ad5a7",
