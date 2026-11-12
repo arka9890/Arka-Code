@@ -110,6 +110,7 @@ fun ProvidersScreen(
     var keepSet by remember { mutableStateOf<Set<String>>(emptySet()) }
     var scanning by remember { mutableStateOf(false) }
     var scanResult by remember { mutableStateOf<List<String>?>(null) }
+    var scanError by remember { mutableStateOf<String?>(null) }
 
     fun load() {
         loading = true
@@ -158,6 +159,7 @@ fun ProvidersScreen(
     fun scanModels(baseUrl: String, key: String) {
         scanning = true
         scanResult = null
+        scanError = null
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
@@ -197,6 +199,8 @@ fun ProvidersScreen(
                         }
                         out
                     }
+                }.onFailure { e ->
+                    scanError = e.message ?: "gagal scan model"
                 }.getOrNull()
             }
             scanning = false
@@ -536,6 +540,7 @@ fun ProvidersScreen(
             onScan = { baseUrl, key -> scanModels(baseUrl, key) },
             scanning = scanning,
             scanResult = scanResult,
+            scanError = scanError,
         )
     }
 
@@ -549,6 +554,7 @@ fun ProvidersScreen(
             onScan = { baseUrl, key -> scanModels(baseUrl, key) },
             scanning = scanning,
             scanResult = scanResult,
+            scanError = scanError,
         )
     }
 
@@ -579,6 +585,7 @@ private fun CustomProviderDialog(
     onScan: (baseUrl: String, key: String) -> Unit,
     scanning: Boolean,
     scanResult: List<String>?,
+    scanError: String?,
 ) {
     val isEdit = key.id.isNotBlank()
     var name by remember(key) { mutableStateOf(key.name) }
@@ -642,6 +649,13 @@ private fun CustomProviderDialog(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                }
+                scanError?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
                 OutlinedTextField(
                     value = apiKey,
