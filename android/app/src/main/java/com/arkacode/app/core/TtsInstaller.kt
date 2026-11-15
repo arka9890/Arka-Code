@@ -116,8 +116,7 @@ object TtsInstaller {
      *
      * Kalau engine neural sudah terpasang, itu yang dipakai lebih dulu —
      * suaranya jauh lebih bagus dan tetap offline. Engine bawaan sistem
-     * selalu jadi cadangan, jadi engine neural yang rusak tidak membuat
-     * Aru-chan bisu.
+     * selalu jadi cadangan, jadi engine neural yang rusak tidak membuat suara bisu.
      *
      * Fungsi murni supaya bisa dites tanpa Android.
      */

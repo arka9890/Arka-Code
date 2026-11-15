@@ -330,6 +330,6 @@ class SessionRunRegistry(
  * `tool-calls` hanya berarti lanjut ke langkah berikutnya, jadi belum selesai;
  * `null` berarti pesan masih menggantung. Tingkat berkas supaya aturan yang
  * sama dipakai baik oleh polling di [SessionRunRegistry] maupun oleh
- * `BuddyAgent` yang memastikan balasan benar-benar lengkap sebelum dibacakan.
+ * polling di [SessionRunRegistry] maupun logika internal lainnya
  */
 fun isTerminalFinish(finish: String?): Boolean = finish != null && finish != "tool-calls"

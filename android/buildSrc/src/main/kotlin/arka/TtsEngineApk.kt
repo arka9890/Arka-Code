@@ -13,11 +13,11 @@ import java.net.URI
  *
  * Hanya ABI arm64-v8a yang dibundel: APK engine per ABI besar (~150 MB),
  * sementara sebagian besar perangkat Android sekarang arm64. Perangkat lain
- * tetap jalan dengan TTS bawaan sistem — Aru-chan tetap bicara Indonesia,
+ * tetap jalan dengan TTS bawaan sistem — suara tetap Indonesia,
  * hanya suaranya bukan neural.
  *
  * Kalau unduhan gagal (mis. offline), build TETAP jalan: APK dibuat tanpa
- * installer engine dan Aru-chan memakai TTS sistem. Lewati total dengan:
+ * installer engine dan memakai TTS sistem. Lewati total dengan:
  * ./gradlew assembleDebug -Ptts.skip=true
  */
 object TtsEngineApk {

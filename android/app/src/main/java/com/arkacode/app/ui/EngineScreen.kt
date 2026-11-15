@@ -124,7 +124,6 @@ fun EngineScreen(
     var showProviders by remember { mutableStateOf(false) }
     var showCaps by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
-    var showBuddy by remember { mutableStateOf(false) }
     var showDistro by remember { mutableStateOf(false) }
     var showBuild by remember { mutableStateOf(false) }
     var lines by remember { mutableStateOf(listOf<String>()) }
@@ -316,12 +315,11 @@ fun EngineScreen(
                 // kalau pipeline selesai saat app di-background, jangan crash.
                 runCatching { EngineService.start(context, port, s.version) }
             }
-            BackHandler(enabled = showCaps || showProviders || showSettings || showBuddy || showDistro || showBuild || target != null) {
+            BackHandler(enabled = showCaps || showProviders || showSettings || showDistro || showBuild || target != null) {
                 when {
                     showCaps -> showCaps = false
                     showProviders -> showProviders = false
                     showSettings -> showSettings = false
-                    showBuddy -> showBuddy = false
                     showDistro -> showDistro = false
                     showBuild -> showBuild = false
                     else -> chatTarget = null
@@ -380,8 +378,6 @@ fun EngineScreen(
                     onBack = { showDistro = false },
                     onRuntimeChanged = { showDistro = false; rebootEngine() },
                 )
-            } else if (showBuddy) {
-                BuddyScreen(client = chatClient, runs = runs, onBack = { showBuddy = false })
             } else if (showBuild) {
                 BuildScreen(
                     engine = engine,
@@ -421,7 +417,6 @@ fun EngineScreen(
                     onOpenProviders = { showProviders = true },
                     onOpenCapabilities = { showCaps = true },
                     onOpenSettings = { showSettings = true },
-                    onOpenBuddy = { showBuddy = true },
                     onOpenBuild = { showBuild = true },
                 )
             }
@@ -601,7 +596,6 @@ private fun ReadyScreen(
     onOpenProviders: () -> Unit,
     onOpenCapabilities: () -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenBuddy: () -> Unit,
     onOpenBuild: () -> Unit,
     isDark: Boolean,
     onToggleTheme: () -> Unit,
@@ -721,7 +715,6 @@ private fun ReadyScreen(
         ClayBottomBar(
             items = listOf(
                 ClayNavItem(Icons.Default.List, I18n.s.navSessions, selected = true, onClick = {}),
-                ClayNavItem(Icons.Default.Face, BuddyText.nav, selected = false, onClick = onOpenBuddy),
                 ClayNavItem(Icons.Default.SmartToy, I18n.s.navAI, selected = false, onClick = onOpenProviders),
                 ClayNavItem(Icons.Default.Build, I18n.s.navCaps, selected = false, onClick = onOpenCapabilities),
                 ClayNavItem(Icons.Default.Android, I18n.s.navBuild, selected = false, onClick = onOpenBuild),

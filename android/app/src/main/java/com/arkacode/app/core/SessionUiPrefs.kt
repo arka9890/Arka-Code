@@ -70,22 +70,6 @@ class SessionUiPrefs(private val context: Context) {
         context.uiPrefsStore.edit { it[stringPreferencesKey("lang_code")] = code }
     }
 
-    // --- Aru-chan --------------------------------------------------------
-
-    /**
-     * Sesi opencode milik Buddy, dipakai ulang antar giliran dan antar buka
-     * layar. Tanpa ini tiap kali membuka layar Buddy membuat sesi baru yang
-     * menumpuk di daftar.
-     */
-    suspend fun buddySessionId(): String? =
-        context.uiPrefsStore.data.map { prefs ->
-            prefs[stringPreferencesKey("buddy_session")]
-        }.first()
-
-    suspend fun setBuddySessionId(id: String) {
-        context.uiPrefsStore.edit { it[stringPreferencesKey("buddy_session")] = id }
-    }
-
     // --- Pembaruan engine opencode (F-update) -------------------------------
 
     /** Auto-update engine saat boot; default aktif. */

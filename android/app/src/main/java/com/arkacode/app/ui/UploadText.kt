@@ -2,7 +2,7 @@ package com.arkacode.app.ui
 
 /**
  * String untuk tombol unggah berkas di panel Files. File terpisah dari
- * `I18n.kt` agar tidak menyentuh berkas yang dipegang user (lihat BuddyText).
+ * `I18n.kt` agar tidak menyentuh berkas yang dipegang user.
  */
 object UploadText {
 

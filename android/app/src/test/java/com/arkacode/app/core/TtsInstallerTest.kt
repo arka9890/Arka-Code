@@ -23,7 +23,7 @@ class TtsInstallerTest {
 
     @Test
     fun `engine sistem tetap jadi cadangan`() {
-        // Tanpa engine neural, atau kalau neuralnya rusak, Aru-chan tetap
+        // Tanpa engine neural, atau kalau neuralnya rusak, suara tetap
         // bicara dengan TTS bawaan — jangan sampai bisu.
         val candidates = TtsInstaller.engineCandidates(neuralInstalled = false)
         assertEquals(1, candidates.size)
