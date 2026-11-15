@@ -213,7 +213,7 @@ fun ChatScreen(
 
     fun send(text: String) {
         val resolved = resolveSlash(text.trim()) ?: text
-        val finalText = pendingContext.takeIf { it.isNotBlank() }
+        val finalText = pendingContext?.takeIf { it.isNotBlank() }
             ?.let { "[Konteks percakapan sebelumnya (8 pesan terakhir)]\n${it}\n---\n${resolved}" }
             ?: resolved
         pendingContext = null
