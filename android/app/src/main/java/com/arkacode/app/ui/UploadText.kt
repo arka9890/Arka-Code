@@ -70,3 +70,37 @@ object DownloadText {
         AppLang.EN -> "Failed to download $name: $why"
     }
 }
+
+/** String untuk aksi "simpan langsung ke Download" (tanpa dialog SAF). */
+object QuickSaveText {
+    /** Deskripsi ikon tombol simpan langsung (file terbuka). */
+    val pickFile: String get() = when (I18n.lang) {
+        AppLang.ID -> "Simpan langsung ke folder Download"
+        AppLang.EN -> "Save directly to the Download folder"
+    }
+
+    /** Deskripsi ikon tombol simpan langsung (folder/ZIP). */
+    val pickZip: String get() = when (I18n.lang) {
+        AppLang.ID -> "Bundel folder ini jadi ZIP ke Download"
+        AppLang.EN -> "Bundle this folder as ZIP to Downloads"
+    }
+
+    fun doneFile(name: String): String = when (I18n.lang) {
+        AppLang.ID -> "$name tersimpan ke folder Download"
+        AppLang.EN -> "$name saved to the Download folder"
+    }
+
+    fun doneZip(count: Int): String = when (I18n.lang) {
+        AppLang.ID ->
+            if (count == 1) "ZIP tersimpan ke Download (1 berkas)"
+            else "ZIP tersimpan ke Download ($count berkas)"
+        AppLang.EN ->
+            if (count == 1) "ZIP saved to Downloads (1 file)"
+            else "ZIP saved to Downloads ($count files)"
+    }
+
+    fun failed(what: String, why: String): String = when (I18n.lang) {
+        AppLang.ID -> "Gagal simpan ke Download $what: $why"
+        AppLang.EN -> "Failed to save $what to Downloads: $why"
+    }
+}

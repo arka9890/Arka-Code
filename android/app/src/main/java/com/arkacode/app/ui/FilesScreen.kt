@@ -26,7 +26,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.SaveAs
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.Card
@@ -84,6 +86,7 @@ fun FilesPane(port: Int, password: String, modifier: Modifier = Modifier) {
     var openedText by remember { mutableStateOf<String?>(null) }
     var openedBytes by remember { mutableStateOf<ByteArray?>(null) }
     var job by remember { mutableStateOf<Job?>(null) }
+    var saving by remember { mutableStateOf(false) }
 
     fun loadDir(dir: String) {
         job?.cancel()
@@ -224,6 +227,57 @@ fun FilesPane(port: Int, password: String, modifier: Modifier = Modifier) {
         }
     }
 
+    /** Simpan file terbuka langsung ke folder Download (tanpa dialog SAF). */
+    fun quickSaveFile() {
+        val path = openedPath ?: return
+        if (saving) return
+        saving = true
+        scope.launch {
+            runCatching {
+                WorkspaceExport.saveFileToDownloads(filesContext, port, password, path)
+            }.onSuccess {
+                Toast.makeText(
+                    filesContext,
+                    QuickSaveText.doneFile(fileLeafName(path)),
+                    Toast.LENGTH_LONG
+                ).show()
+            }.onFailure {
+                Toast.makeText(
+                    filesContext,
+                    QuickSaveText.failed(fileLeafName(path), it.message ?: "?"),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            saving = false
+        }
+    }
+
+    /** Bundel folder cwd jadi ZIP langsung ke folder Download (tanpa SAF). */
+    fun quickSaveZip() {
+        if (saving) return
+        saving = true
+        scope.launch {
+            runCatching {
+                WorkspaceExport.saveFolderZipToDownloads(
+                    filesContext, port, password, cwd, ExportText.zipName(cwd)
+                )
+            }.onSuccess { count ->
+                Toast.makeText(
+                    filesContext,
+                    QuickSaveText.doneZip(count),
+                    Toast.LENGTH_LONG
+                ).show()
+            }.onFailure {
+                Toast.makeText(
+                    filesContext,
+                    QuickSaveText.failed(ExportText.zipName(cwd), it.message ?: "?"),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            saving = false
+        }
+    }
+
     Surface(color = MaterialTheme.colorScheme.surface) {
         Column(Modifier.fillMaxWidth()) {
             Row(
@@ -255,6 +309,12 @@ fun FilesPane(port: Int, password: String, modifier: Modifier = Modifier) {
                             contentDescription = UploadText.pick,
                         )
                     }
+                    IconButton(onClick = { quickSaveZip() }) {
+                        Icon(
+                            Icons.Default.SaveAs,
+                            contentDescription = QuickSaveText.pickZip,
+                        )
+                    }
                     IconButton(onClick = { pickExportZip.launch(ExportText.zipName(cwd)) }) {
                         Icon(
                             Icons.Default.Save,
@@ -262,6 +322,16 @@ fun FilesPane(port: Int, password: String, modifier: Modifier = Modifier) {
                         )
                     }
                 } else {
+                    IconButton(onClick = { quickSaveFile() }, enabled = !saving) {
+                        if (saving) {
+                            CircularProgressIndicator(Modifier.width(20.dp))
+                        } else {
+                            Icon(
+                                Icons.Default.DownloadDone,
+                                contentDescription = QuickSaveText.pickFile,
+                            )
+                        }
+                    }
                     IconButton(onClick = { pickDownloadFile.launch(fileLeafName(openedPath!!)) }) {
                         Icon(
                             Icons.Default.Download,
