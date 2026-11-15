@@ -27,27 +27,67 @@ data class SessionMemory(
 )
 
 /**
- * Memori global: pola penggunaan tools di seluruh sesi dan model. Model baru
- * yang belum pernah coba tool tertentu bisa merujuk ke sini untuk mengetahui
- * tool mana yang sering digunakan dan tingkat keberhasilannya, tanpa perlu
- * re-test panjang.
+ * Kategori entri memori global.
+ */
+enum class MemoryCategory {
+    /** Tool yang dipanggil agent (mis. readFile, writeFile, buildApk). */
+    Tool,
+    /** Path folder atau file yang sering dicari (mis. output build APK, lokasi Chrome). */
+    Path,
+    /** Perintah shell / CLI yang berhasil gagal/berhasil. */
+    Command,
+    /** Berkas atau resource yang ditemukan setelah pencarian. */
+    File,
+    /** Entri lain yang tidak masuk kategori di atas. */
+    Other,
+}
+
+/**
+ * Memori global: entri kunci-nilai yang tersimpan di seluruh sesi dan model.
+ * Model baru yang belum pernah mencoba sesuatu bisa merujuk ke sini untuk
+ * mengetahui path / perintah / tool mana yang sering digunakan dan tingkat
+ * keberhasilannya, tanpa perlu re-test panjang.
+ *
+ * [key] adalah kunci pencarian (mis. nama tool, path folder, perintah).
+ * [value] adalah isi yang ditemukan (mis. path lengkap, hasil perintah).
+ * [category] menandai jenis entri.
+ * [searchFailCount] = berapa kali pencarian gagal sebelum ditemukan.
+ * [searchSuccessCount] = berapa kali pencarian sukses.
+ * [lastFoundAt] = timestamp terakhir ditemukan.
+ * [commonPatterns] = pola parameter yang sering dipakai.
+ * [providerId]/[modelId] = siapa yang terakhir menggunakan entri ini.
  */
 @Serializable
-data class GlobalToolMemory(
-    val toolName: String,
-    /** Jumlah kali tool ini dipanggil (seluruh sesi). */
-    val usageCount: Int = 0,
-    /** Jumlah kali tool ini sukses (status completed). */
-    val successCount: Int = 0,
-    val lastUsedAt: Long = 0,
-    /** Pola parameter yang sering dipakai (max 20 entri terbaru). */
+data class GlobalMemoryEntry(
+    val key: String,
+    val value: String,
+    val category: MemoryCategory = MemoryCategory.Other,
+    val searchFailCount: Int = 0,
+    val searchSuccessCount: Int = 0,
+    val lastFoundAt: Long = 0,
     val commonPatterns: List<String> = emptyList(),
-    /** Provider yang terakhir menggunakan tool ini. */
     val providerId: String? = null,
-    /** Model yang terakhir menggunakan tool ini. */
     val modelId: String? = null,
 ) {
-    /** Tingkat keberhasitan tool (0.0 – 1.0), null jika belum pernah dipakai. */
+    /** Tingkat keberhasitan pencarian (0.0 – 1.0), null jika belum pernah dicoba. */
     fun successRate(): Float? =
-        if (usageCount == 0) null else successCount.toFloat() / usageCount
+        val total = searchFailCount + searchSuccessCount
+        if (total == 0) null else searchSuccessCount.toFloat() / total
+
+    /** Apakah entri ini sudah \"terbukti\" (minimal 2 kali gagal lalu sukses). */
+    fun isProven(): Boolean =
+        searchFailCount >= 2 && searchSuccessCount >= 1
 }
+
+/**
+ * Hasil pencarian yang akan dicatat ke memori global.
+ */
+data class SearchResult(
+    val key: String,
+    val value: String,
+    val category: MemoryCategory = MemoryCategory.Other,
+    val found: Boolean = true,
+    val pattern: String? = null,
+    val providerId: String? = null,
+    val modelId: String? = null,
+)

@@ -150,16 +150,15 @@ class SessionRunRegistry(
                             val entry = ToolUse(key, name, ev.status)
                             if (i >= 0) cur[i] = entry else cur.add(entry)
                             r.liveTools.value = cur
-                            // Global tool memory: catat keberhasitan/gagal tool
+                            // Global memory: catat keberhasitan/gagal tool
                             val model = r.lastModelRef.value
-                            when (ev.status) {
-                                "completed" -> MemoryStore.updateGlobalToolUsage(
-                                    context, ev.label, true, null, model?.providerID, model?.id
-                                )
-                                "error" -> MemoryStore.updateGlobalToolUsage(
-                                    context, ev.label, false, null, model?.providerID, model?.id
-                                )
-                            }
+                            MemoryStore.recordToolUsage(
+                                context,
+                                toolName = ev.label,
+                                success = ev.status == "completed",
+                                providerId = model?.providerID,
+                                modelId = model?.id,
+                            )
                         }
                     }
                     is ServerEvent.TextDelta -> r.liveText.value += ev.delta

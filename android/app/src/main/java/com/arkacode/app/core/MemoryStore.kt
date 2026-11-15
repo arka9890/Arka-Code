@@ -8,9 +8,14 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromString
 
 /**
- * Penyimpanan memori (session + global tool) terenkripsi mengikuti pola
+ * Penyimpanan memori (session + global) terenkripsi mengikuti pola
  * [SecureStore]: EncryptedSharedPreferences dengan MasterKey AES256_GCM/SIV,
  * file `arkacode_memory`. Data kompleks diserialisasi ke JSON sebelum disimpan.
+ *
+ * Memori global menyimpan entri kunci-nilai umum (bukan cuma tool): path folder,
+ * lokasi Chrome, perintah CLI, hasil pencarian berkas, dan lain-lain. Setiap
+ * entri melacak jumlah pencarian gagal/berhasil agar model baru bisa merujuk
+ * tanpa re-test panjang.
  */
 object MemoryStore {
     private const val FILE = "arkacode_memory"
@@ -55,42 +60,75 @@ object MemoryStore {
         }
     }
 
-    // ------------------------------------------------------------- global tool memory
+    // ------------------------------------------------------------- global memory
 
-    /** Simpan/Upsert memori tool global untuk toolName. */
-    fun saveGlobalToolMemory(context: Context, memory: GlobalToolMemory) {
+    /** Simpan/Upsert entri memori global untuk key. */
+    fun saveGlobalMemory(context: Context, entry: GlobalMemoryEntry) {
         runCatching {
             prefs(context).edit()
-                .putString("global_tool_${memory.toolName}", json.encodeToString(memory))
+                .putString("global_${entry.category.name}_${entry.key}", json.encodeToString(entry))
                 .apply()
         }
     }
 
-    /** Muat memori tool global untuk toolName; null jika belum ada. */
-    fun loadGlobalToolMemory(context: Context, toolName: String): GlobalToolMemory? = runCatching {
+    /** Muat entri memori global untuk key + category; null jika belum ada. */
+    fun loadGlobalMemory(context: Context, key: String, category: MemoryCategory): GlobalMemoryEntry? = runCatching {
         val p = prefs(context)
-        val s = p.getString("global_tool_$toolName", null)
+        val s = p.getString("global_${category.name}_$key", null)
         if (s.isNullOrBlank()) return@runCatching null
         json.decodeFromString(s)
     }.getOrNull()
 
-    /** Muat semua memori tool global yang tersimpan. */
-    fun loadAllGlobalToolMemory(context: Context): List<GlobalToolMemory> = runCatching {
+    /** Muat semua entri memori global yang tersimpan. */
+    fun loadAllGlobalMemory(context: Context): List<GlobalMemoryEntry> = runCatching {
         val p = prefs(context)
         p.all.keys
-            .filter { it.startsWith("global_tool_") }
+            .filter { it.startsWith("global_") }
             .mapNotNull { key ->
-                val toolName = key.removePrefix("global_tool_")
-                loadGlobalToolMemory(context, toolName)
+                val jsonStr = p.getString(key, null)
+                if (jsonStr.isNullOrBlank()) null@mapNotNull else json.decodeFromString<GlobalMemoryEntry>(jsonStr)
             }
     }.getOrNull() ?: emptyList()
 
     /**
-     * Catat penggunaan satu tool ke memori global. `success` = apakah tool
-     * selesai berhasil, `pattern` = ringkasan parameter (best-effort, boleh
-     * null), `providerId`/`modelId` = siapa yang terakhir memakainya.
+     * Catat hasil pencarian ke memori global. Jika ditemukan, entri baru dibuat
+     * atau di-update dengan searchSuccessCount++. Jika gagal, searchFailCount++.
+     * Setelah 2 kali gagal lalu sukses, entri dianggap "terbukti" (isProven).
      */
-    fun updateGlobalToolUsage(
+    fun recordSearchResult(context: Context, result: SearchResult) {
+        val existing = loadGlobalMemory(context, result.key, result.category)
+            ?: GlobalMemoryEntry(
+                key = result.key,
+                value = result.value,
+                category = result.category,
+                lastFoundAt = if (result.found) System.currentTimeMillis() else 0,
+            )
+
+        val updated = when {
+            result.found -> existing.copy(
+                value = result.value,
+                category = result.category,
+                searchSuccessCount = existing.searchSuccessCount + 1,
+                lastFoundAt = System.currentTimeMillis(),
+                commonPatterns = if (result.pattern.isNullOrBlank()) existing.commonPatterns
+                    else (existing.commonPatterns + result.pattern).distinct().takeLast(20),
+                providerId = result.providerId ?: existing.providerId,
+                modelId = result.modelId ?: existing.modelId,
+            )
+            else -> existing.copy(
+                searchFailCount = existing.searchFailCount + 1,
+                providerId = result.providerId ?: existing.providerId,
+                modelId = result.modelId ?: existing.modelId,
+            )
+        }
+        saveGlobalMemory(context, updated)
+    }
+
+    /**
+     * Catat penggunaan tool (untuk kompatibilitas dengan pelacakan tool yang
+     * sudah ada di SessionRunRegistry). Dipanggil saat tool selesai.
+     */
+    fun recordToolUsage(
         context: Context,
         toolName: String,
         success: Boolean,
@@ -98,20 +136,15 @@ object MemoryStore {
         providerId: String? = null,
         modelId: String? = null,
     ) {
-        val existing = loadGlobalToolMemory(context, toolName)
-            ?: GlobalToolMemory(
-                toolName = toolName,
-                lastUsedAt = System.currentTimeMillis(),
-            )
-        val updated = existing.copy(
-            usageCount = existing.usageCount + 1,
-            successCount = existing.successCount + (if (success) 1 else 0),
-            lastUsedAt = System.currentTimeMillis(),
-            commonPatterns = if (pattern.isNullOrBlank()) existing.commonPatterns
-                else (existing.commonPatterns + pattern).distinct().takeLast(20),
-            providerId = providerId ?: existing.providerId,
-            modelId = modelId ?: existing.modelId,
-        )
-        saveGlobalToolMemory(context, updated)
+        recordSearchResult(context,
+            SearchResult(
+                key = toolName,
+                value = toolName,
+                category = MemoryCategory.Tool,
+                found = success,
+                pattern = pattern,
+                providerId = providerId,
+                modelId = modelId,
+            ))
     }
 }
