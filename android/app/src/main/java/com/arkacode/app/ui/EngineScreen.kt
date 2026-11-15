@@ -299,7 +299,7 @@ fun EngineScreen(
             }
             val target = chatTarget
             val chatClient = remember(port, password) { OpenCodeClient(port = port, password = password) }
-            val runs = remember(chatClient) { SessionRunRegistry(scope, chatClient) }
+            val runs = remember(chatClient) { SessionRunRegistry(context, scope, chatClient) }
             // FGS + notifikasi status bar: prioritas proses naik supaya server
             // tetap hidup saat app masuk background. Izin notifikasi (Android
             // 13+) diminta sekali; bila ditolak service tetap jalan, hanya

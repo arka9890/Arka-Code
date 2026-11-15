@@ -1,5 +1,7 @@
 package com.arkacode.app.net
 
+import kotlinx.serialization.Serializable
+
 /** Sesi chat di server (parsing longgar — field tak dikenal diabaikan). */
 data class ChatSession(
     val id: String,
@@ -84,6 +86,7 @@ data class FileDiffEntry(
 /** Status revert yang distage server. */
 data class RevertState(val messageID: String, val files: List<FileDiffEntry>)
 data class ProviderInfo(val id: String, val name: String, val models: List<ModelInfo>)
+@Serializable
 data class ModelRef(val providerID: String, val id: String)
 
 /** Permintaan persetujuan (ringkasan best-effort dari field mentahnya). */

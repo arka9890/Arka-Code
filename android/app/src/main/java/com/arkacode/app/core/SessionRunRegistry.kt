@@ -1,5 +1,6 @@
 package com.arkacode.app.core
 
+import android.content.Context
 import androidx.compose.runtime.mutableStateOf
 import com.arkacode.app.net.ChatItem
 import com.arkacode.app.net.ModelRef
@@ -32,6 +33,8 @@ class SessionRun {
     val toolLabel = mutableStateOf<String?>(null)
     val justSent = mutableStateOf<String?>(null)
     val error = mutableStateOf<String?>(null)
+    /** Model terakhir yang dipakai di sesi ini (digunakan untuk tag global tool memory). */
+    val lastModelRef = mutableStateOf<ModelRef?>(null)
 
     internal var pollJob: Job? = null
     internal var preIds: Set<String> = emptySet()
@@ -45,6 +48,7 @@ class SessionRun {
  * assistant (server v2 tidak mengirim event idle).
  */
 class SessionRunRegistry(
+    private val context: Context,
     private val scope: CoroutineScope,
     private val client: OpenCodeClient,
 ) {
@@ -146,6 +150,16 @@ class SessionRunRegistry(
                             val entry = ToolUse(key, name, ev.status)
                             if (i >= 0) cur[i] = entry else cur.add(entry)
                             r.liveTools.value = cur
+                            // Global tool memory: catat keberhasitan/gagal tool
+                            val model = r.lastModelRef.value
+                            when (ev.status) {
+                                "completed" -> MemoryStore.updateGlobalToolUsage(
+                                    context, ev.label, true, null, model?.providerID, model?.id
+                                )
+                                "error" -> MemoryStore.updateGlobalToolUsage(
+                                    context, ev.label, false, null, model?.providerID, model?.id
+                                )
+                            }
                         }
                     }
                     is ServerEvent.TextDelta -> r.liveText.value += ev.delta
@@ -170,6 +184,11 @@ class SessionRunRegistry(
 
     fun clearError(sessionId: String) {
         run(sessionId).error.value = null
+    }
+
+    /** Catat model terakhir yang dipakai untuk sesi ini (digunakan untuk tag global tool memory). */
+    fun setLastModel(sessionId: String, model: ModelRef?) {
+        run(sessionId).lastModelRef.value = model
     }
 
     /** Kirim prompt (+ lampiran). `false` bila kosong & tanpa lampiran, atau sibuk. */

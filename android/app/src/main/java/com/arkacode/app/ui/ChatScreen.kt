@@ -89,6 +89,8 @@ import com.arkacode.app.core.ModelSupport
 import com.arkacode.app.core.PromptExpander
 import com.arkacode.app.core.SessionRunRegistry
 import com.arkacode.app.core.SlashSuggest
+import com.arkacode.app.core.MemoryStore
+import com.arkacode.app.core.SessionMemory
 import com.arkacode.app.net.AgentInfo
 import com.arkacode.app.net.ChatItem
 import com.arkacode.app.net.CommandInfo
@@ -211,6 +213,13 @@ fun ChatScreen(
         if (registry.send(sessionId, resolved, pinnedModel, attachments)) {
             input = ""
             attachments = emptyList()
+            // Update session memory: increment message count
+            val memory = MemoryStore.loadSessionMemory(context, sessionId)
+                ?: SessionMemory(sessionId = sessionId)
+            MemoryStore.saveSessionMemory(context, memory.copy(
+                messageCount = memory.messageCount + 1,
+                updatedAt = System.currentTimeMillis(),
+            ))
         }
     }
 
@@ -229,11 +238,13 @@ fun ChatScreen(
 
     LaunchedEffect(sessionId) {
         registry.attach(sessionId)
+        // Load session memory: restore last model / agent as initial state jika belum ada initial.
+        val memory = MemoryStore.loadSessionMemory(context, sessionId)
         val provided = if (initialProviderID != null && initialModelID != null) {
             ModelRef(initialProviderID, initialModelID)
         } else null
-        pinnedModel = provided
-        agentId = initialAgentID
+        pinnedModel = provided ?: memory?.lastModelRef
+        agentId = initialAgentID ?: memory?.lastAgentId
         runCatching { client.listAgents() }.getOrNull()?.let { agents = it.filter { a -> !a.hidden } }
         runCatching { client.listCommands() }.getOrNull()?.let { commands = it }
         runCatching { client.listSkills() }.getOrNull()?.let { skills = it }
@@ -248,6 +259,20 @@ fun ChatScreen(
                 }
             }
         }
+        // Tandai sesi baru diakses (update updatedAt tanpa menimpa data lain).
+        memory?.let { m ->
+            MemoryStore.saveSessionMemory(context, m.copy(updatedAt = System.currentTimeMillis()))
+        }
+    }
+    LaunchedEffect(pinnedModel) {
+        registry.setLastModel(sessionId, pinnedModel)
+        val memory = MemoryStore.loadSessionMemory(context, sessionId)
+            ?: SessionMemory(sessionId = sessionId)
+        MemoryStore.saveSessionMemory(context, memory.copy(
+            lastModelRef = pinnedModel,
+            lastAgentId = agentId,
+            updatedAt = System.currentTimeMillis(),
+        ))
     }
     LaunchedEffect(messages.size) {
         val count = listState.layoutInfo.totalItemsCount
