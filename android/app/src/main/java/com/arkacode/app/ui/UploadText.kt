@@ -50,3 +50,23 @@ object ExportText {
         AppLang.EN -> "Failed to create ZIP: $why"
     }
 }
+
+/** String untuk tombol unduh satu berkas di panel Files. */
+object DownloadText {
+
+    /** Deskripsi ikon tombol. */
+    val pick: String get() = when (I18n.lang) {
+        AppLang.ID -> "Unduh berkas ini"
+        AppLang.EN -> "Download this file"
+    }
+
+    fun done(name: String): String = when (I18n.lang) {
+        AppLang.ID -> "$name tersimpan"
+        AppLang.EN -> "$name saved"
+    }
+
+    fun failed(name: String, why: String): String = when (I18n.lang) {
+        AppLang.ID -> "Gagal mengunduh $name: $why"
+        AppLang.EN -> "Failed to download $name: $why"
+    }
+}

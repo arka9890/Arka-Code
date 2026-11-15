@@ -100,4 +100,25 @@ object WorkspaceExport {
             newName
         }
     }
+
+    /**
+     * Ekspor satu berkas ke lokasi yang dipilih pengguna via OpenDocument.
+     * @param port password client lokal
+     * @param path path berkas di workspace server
+     * @param out uri hasil ActivityResultContracts.CreateDocument
+     */
+    suspend fun exportFile(
+        context: Context,
+        port: Int,
+        password: String,
+        path: String,
+        out: Uri,
+    ): Long = withContext(Dispatchers.IO) {
+        val client = OpenCodeClient(port = port, password = password)
+        val bytes = client.readFileBytes(path, maxBytes = 64_000_000)
+        context.contentResolver.openOutputStream(out)?.use { outStream ->
+            outStream.write(bytes)
+        } ?: throw IOException("tidak bisa menulis berkas")
+        bytes.size.toLong()
+    }
 }

@@ -25,6 +25,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Upload
@@ -197,6 +198,32 @@ fun FilesPane(port: Int, password: String, modifier: Modifier = Modifier) {
         }
     }
 
+    val pickDownloadFile = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        if (openedPath == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                WorkspaceExport.exportFile(
+                    filesContext, port, password, openedPath!!, uri
+                )
+            }.onSuccess { size ->
+                Toast.makeText(
+                    filesContext,
+                    DownloadText.done(fileLeafName(openedPath!!)),
+                    Toast.LENGTH_LONG
+                ).show()
+            }.onFailure {
+                Toast.makeText(
+                    filesContext,
+                    DownloadText.failed(fileLeafName(openedPath!!), it.message ?: "?"),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
     Surface(color = MaterialTheme.colorScheme.surface) {
         Column(Modifier.fillMaxWidth()) {
             Row(
@@ -232,6 +259,13 @@ fun FilesPane(port: Int, password: String, modifier: Modifier = Modifier) {
                         Icon(
                             Icons.Default.Save,
                             contentDescription = ExportText.pick,
+                        )
+                    }
+                } else {
+                    IconButton(onClick = { pickDownloadFile.launch(fileLeafName(openedPath!!)) }) {
+                        Icon(
+                            Icons.Default.Download,
+                            contentDescription = DownloadText.pick,
                         )
                     }
                 }
