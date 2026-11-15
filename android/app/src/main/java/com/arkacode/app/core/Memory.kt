@@ -1,14 +1,15 @@
 package com.arkacode.app.core
 
+import com.arkacode.app.net.ChatItem
 import com.arkacode.app.net.ModelRef
 import kotlinx.serialization.Serializable
 
 /**
  * Memori lokal per sesi: menyimpan konteks percakapan (model terakhir yang
- * dipakai, agent, jumlah pesan, ringkasan, topik kunci) agar context tidak
- * hilang saat ganti model di dalam sesi yang sama. Disimpan terenkripsi di
- * [MemoryStore] dan dimuat ulang setiap kali layar chat dibuka untuk sessionId
- * tersebut.
+ * dipakai, agent, jumlah pesan, 8 pesan terakhir terkompresi, topik kunci)
+ * agar context tidak hilang saat ganti model di dalam sesi yang sama.
+ * Disimpan terenkripsi di [MemoryStore] dan dimuat ulang setiap kali layar
+ * chat dibuka untuk sessionId tersebut.
  */
 @Serializable
 data class SessionMemory(
@@ -19,12 +20,35 @@ data class SessionMemory(
     val lastAgentId: String? = null,
     /** Jumlah pesan yang sudah dipertukarkan di sesi ini. */
     val messageCount: Int = 0,
-    /** Ringkasan singkat percakapan (best-effort) untuk konteks model baru. */
-    val lastSummary: String? = null,
+    /** 8 pesan terakhir dalam format terkompresi untuk injeksi ke model baru. */
+    val compressedContext: String? = null,
     /** Topik kunci yang telah dibahas di sesi ini. */
     val keyTopics: List<String> = emptyList(),
     val updatedAt: Long = System.currentTimeMillis(),
 )
+
+/** Kompresi daftar pesan menjadi string ringkas untuk konteks model baru. */
+fun compressChatContext(messages: List<ChatItem>, limit: Int = 8): String {
+    val recent = messages.takeLast(limit)
+    val sb = StringBuilder()
+    for (m in recent) {
+        when (m) {
+            is ChatItem.User -> {
+                val t = m.text.take(160).replace("\n", " ")
+                sb.append("U: ").append(t).append("\n")
+            }
+            is ChatItem.Assistant -> {
+                val t = m.texts.firstOrNull()?.take(160)?.replace("\n", " ") ?: "..."
+                sb.append("A: ").append(t).append("\n")
+            }
+            is ChatItem.Note -> {
+                val t = m.text.take(120).replace("\n", " ")
+                sb.append("S: ").append(t).append("\n")
+            }
+        }
+    }
+    return sb.toString().trimEnd()
+}
 
 /**
  * Kategori entri memori global.

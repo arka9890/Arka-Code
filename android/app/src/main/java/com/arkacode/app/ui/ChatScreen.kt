@@ -91,6 +91,7 @@ import com.arkacode.app.core.SessionRunRegistry
 import com.arkacode.app.core.SlashSuggest
 import com.arkacode.app.core.MemoryStore
 import com.arkacode.app.core.SessionMemory
+import com.arkacode.app.core.compressChatContext
 import com.arkacode.app.net.AgentInfo
 import com.arkacode.app.net.ChatItem
 import com.arkacode.app.net.CommandInfo
@@ -142,6 +143,8 @@ fun ChatScreen(
 
     var input by remember { mutableStateOf("") }
     var pinnedModel by remember { mutableStateOf<ModelRef?>(null) }
+    /** Konteks terkompresi 8 pesan terakhir yang akan disuntik ke model baru saat ganti model. */
+    var pendingContext by remember { mutableStateOf<String?>(null) }
     var showPicker by remember { mutableStateOf(false) }
     var showFilesTab by remember { mutableStateOf(false) }
     var agents by remember { mutableStateOf(listOf<AgentInfo>()) }
@@ -210,16 +213,23 @@ fun ChatScreen(
 
     fun send(text: String) {
         val resolved = resolveSlash(text.trim()) ?: text
-        if (registry.send(sessionId, resolved, pinnedModel, attachments)) {
+        val finalText = pendingContext.takeIf { it.isNotBlank() }
+            ?.let { "[Konteks percakapan sebelumnya (8 pesan terakhir)]\n${it}\n---\n${resolved}" }
+            ?: resolved
+        pendingContext = null
+        if (registry.send(sessionId, finalText, pinnedModel, attachments)) {
             input = ""
             attachments = emptyList()
-            // Update session memory: increment message count
+            // Update session memory: increment message count + compress last 8 messages
             val memory = MemoryStore.loadSessionMemory(context, sessionId)
                 ?: SessionMemory(sessionId = sessionId)
-            MemoryStore.saveSessionMemory(context, memory.copy(
+            val updated = memory.copy(
                 messageCount = memory.messageCount + 1,
+                compressedContext = compressChatContext(run.messages.value),
                 updatedAt = System.currentTimeMillis(),
-            ))
+            )
+            MemoryStore.saveSessionMemory(context, updated)
+            pendingContext = updated.compressedContext
         }
     }
 
@@ -245,6 +255,7 @@ fun ChatScreen(
         } else null
         pinnedModel = provided ?: memory?.lastModelRef
         agentId = initialAgentID ?: memory?.lastAgentId
+        pendingContext = memory?.compressedContext
         runCatching { client.listAgents() }.getOrNull()?.let { agents = it.filter { a -> !a.hidden } }
         runCatching { client.listCommands() }.getOrNull()?.let { commands = it }
         runCatching { client.listSkills() }.getOrNull()?.let { skills = it }
@@ -271,6 +282,7 @@ fun ChatScreen(
         MemoryStore.saveSessionMemory(context, memory.copy(
             lastModelRef = pinnedModel,
             lastAgentId = agentId,
+            compressedContext = memory.compressedContext,
             updatedAt = System.currentTimeMillis(),
         ))
     }
