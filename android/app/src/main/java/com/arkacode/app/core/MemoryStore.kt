@@ -5,7 +5,6 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.decodeFromString
 
 /**
  * Penyimpanan memori (session + global) terenkripsi mengikuti pola
@@ -82,12 +81,17 @@ object MemoryStore {
     /** Muat semua entri memori global yang tersimpan. */
     fun loadAllGlobalMemory(context: Context): List<GlobalMemoryEntry> = runCatching {
         val p = prefs(context)
-        p.all.keys
-            .filter { it.startsWith("global_") }
-            .mapNotNull { key ->
-                val jsonStr = p.getString(key, null)
-                if (jsonStr.isNullOrBlank()) null@mapNotNull else json.decodeFromString<GlobalMemoryEntry>(jsonStr)
+        val result = mutableListOf<GlobalMemoryEntry>()
+        for (key in p.all.keys) {
+            if (key.startsWith("global_")) {
+                val jsonStr = p.getString(key, null) ?: continue
+                if (jsonStr.isNotBlank()) {
+                    val entry: GlobalMemoryEntry = json.decodeFromString(jsonStr)
+                    result.add(entry)
+                }
             }
+        }
+        result
     }.getOrNull() ?: emptyList()
 
     /**

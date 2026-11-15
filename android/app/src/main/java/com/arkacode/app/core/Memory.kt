@@ -70,9 +70,10 @@ data class GlobalMemoryEntry(
     val modelId: String? = null,
 ) {
     /** Tingkat keberhasitan pencarian (0.0 – 1.0), null jika belum pernah dicoba. */
-    fun successRate(): Float? =
+    fun successRate(): Float? {
         val total = searchFailCount + searchSuccessCount
-        if (total == 0) null else searchSuccessCount.toFloat() / total
+        return if (total == 0) null else searchSuccessCount.toFloat() / total
+    }
 
     /** Apakah entri ini sudah \"terbukti\" (minimal 2 kali gagal lalu sukses). */
     fun isProven(): Boolean =
