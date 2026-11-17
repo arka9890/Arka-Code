@@ -284,6 +284,15 @@ class Strings {
     var distroInstallCancelled: String = ""
     var distroInstallBusy: String = ""
     var distroRestartHint: String = ""
+    // --- Tool containers ----------------------------------------------------
+    var containersTitle: String = ""
+    var containerInstall: String = ""
+    var containerRemove: String = ""
+    var containerInstalled: String = ""
+    var containerNotInstalled: String = ""
+    var containerRestartHint: String = ""
+    var containerRemoveBusy: String = ""
+    var containerInstallBusy: String = ""
 }
 
 private val id = Strings().apply {
@@ -546,6 +555,14 @@ private val id = Strings().apply {
     distroInstallCancelled = "Unduhan dibatalkan."
     distroInstallBusy = "Sudah ada unduhan lain yang jalan."
     distroRestartHint = "Restart server (Stop lalu jalankan lagi) untuk menerapkan distro baru."
+    containersTitle = "Tool containers"
+    containerInstall = "Pasang"
+    containerRemove = "Hapus"
+    containerInstalled = "terpasang"
+    containerNotInstalled = "belum terpasang"
+    containerRestartHint = "Container terpasang. Restart engine (Stop → Start) agar PATH container aktif di server."
+    containerRemoveBusy = "Hentikan engine dulu sebelum menghapus container."
+    containerInstallBusy = "Sedang memasang container lain…"
 }
 
 private val en = Strings().apply {
@@ -808,6 +825,14 @@ private val en = Strings().apply {
     distroInstallCancelled = "Download cancelled."
     distroInstallBusy = "Another download is already running."
     distroRestartHint = "Restart the server (Stop, then start again) to apply the new distro."
+    containersTitle = "Tool containers"
+    containerInstall = "Install"
+    containerRemove = "Remove"
+    containerInstalled = "installed"
+    containerNotInstalled = "not installed"
+    containerRestartHint = "Container installed. Restart engine (Stop → Start) for the container PATH to apply to the server."
+    containerRemoveBusy = "Stop the engine before removing a container."
+    containerInstallBusy = "Another container is installing…"
 }
 
 /** Registry bahasa global (state Compose → recompose otomatis saat diganti). */

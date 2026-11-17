@@ -39,6 +39,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.arkacode.app.core.ContainerCatalog
+import com.arkacode.app.core.ContainerManager
+import com.arkacode.app.core.ContainerSpec
 import com.arkacode.app.core.DistroCatalog
 import com.arkacode.app.core.DistroManager
 import com.arkacode.app.core.DistroSpec
@@ -102,10 +105,29 @@ fun DistroScreen(
     /** Token++; incremented tiap unduhan baru (mencegah state lama menimpa baru). */
     var installToken by remember { mutableStateOf(0) }
 
+    /**
+     * State seksi **Tool containers** — sengaja dipisah dari state distro
+     * karena container tidak memakai rootfs distro yang aktif: ia hidup di
+     * `<filesDir>/containers` dan dipasang sekali untuk semua distro.
+     */
+    var installedContainerIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var containerSizes by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var installingContainerId by remember { mutableStateOf<String?>(null) }
+    var containerProgress by remember { mutableStateOf(0) }
+    var containerProgressLabel by remember { mutableStateOf("") }
+    var containerErrors by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var removingContainerId by remember { mutableStateOf<String?>(null) }
+
     /** ABI perangkat — menentukan rootfs mana yang tersedia. */
     val deviceAbi = remember {
         android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"
     }
+
+    /** Manajer container (pembungkus File — ringan, aman di-remember per ABI). */
+    val containerManager = remember(deviceAbi) { ContainerManager(context, deviceAbi) }
+
+    /** ABI ini punya pasangan arsitektur Alpine? Kalau tidak, container tak bisa dipasang. */
+    val containersSupported = remember(deviceAbi) { ContainerCatalog.archFor(deviceAbi) != null }
 
     /** Nama kelompok distro yang sudah diterjemahkan. */
     fun groupLabel(group: String): String = when (group) {
@@ -114,10 +136,16 @@ fun DistroScreen(
         else -> group
     }
 
-    /** Status terpasang per distro — dicek cepat per folder, tanpa hitung ukuran rootfs. */
+    /**
+     * Status terpasang per distro — dicek cepat per folder, tanpa hitung ukuran rootfs.
+     *
+     * Sekalian menyegarkan status tool container (cek rootfs + shim per spec).
+     * Semua pekerjaan file ada di IO; state Compose baru ditulis setelah
+     * `withContext` kembali ke main thread.
+     */
     fun refresh() {
         scope.launch {
-            val (ids, sz) = withContext(Dispatchers.IO) {
+            val (distroState, containerState) = withContext(Dispatchers.IO) {
                 val ready = mutableSetOf<String>()
                 val sizes = mutableMapOf<String, String>()
                 DistroCatalog.ALL.forEach { spec ->
@@ -128,10 +156,20 @@ fun DistroScreen(
                         sizes[spec.id] = "%.1f MB".format(bytes / 1024.0 / 1024.0)
                     }
                 }
-                ready to sizes
+                val containerReady = mutableSetOf<String>()
+                val containerSz = mutableMapOf<String, String>()
+                ContainerCatalog.ALL.forEach { spec ->
+                    if (containerManager.isInstalled(spec)) {
+                        containerReady += spec.id
+                        containerSz[spec.id] = containerManager.sizeLabel(spec)
+                    }
+                }
+                (ready to sizes) to (containerReady to containerSz)
             }
-            installedIds = ids
-            sizes = sz
+            installedIds = distroState.first
+            sizes = distroState.second
+            installedContainerIds = containerState.first
+            containerSizes = containerState.second
             prootReady = withContext(Dispatchers.IO) {
                 val dm = DistroManager(context, DistroCatalog.ALPINE_320)
                 dm.prootBinary() != null && dm.loaderBinary() != null
@@ -279,6 +317,88 @@ fun DistroScreen(
     }
 
     /**
+     * Pasang satu tool container (python/node).
+     *
+     * Container dipasang di folder sendiri (`<filesDir>/containers/<id>`) dan
+     * di-bind ke `/opt/containers` di distro mana pun, jadi rootfs distro aktif
+     * tidak tersentuh. Setelah terpasang, engine perlu di-restart supaya PATH
+     * container ikut masuk server (lihat `I18n.s.containerRestartHint`).
+     *
+     * Hanya satu container yang boleh dipasang sekaligus — tombol container
+     * lain dinonaktifkan, bukan dihilangkan, supaya kartunya tidak melompat.
+     */
+    fun installContainer(spec: ContainerSpec) {
+        if (installingContainerId != null) {
+            message = I18n.s.containerInstallBusy
+            return
+        }
+        if (!containersSupported) {
+            containerErrors = containerErrors + (spec.id to I18n.s.distroNotAvailable)
+            return
+        }
+        if (!prootReady) {
+            containerErrors = containerErrors + (spec.id to I18n.s.distroProotMissing)
+            return
+        }
+        installingContainerId = spec.id
+        containerProgress = 0
+        containerProgressLabel = ""
+        containerErrors = containerErrors - spec.id
+        message = null
+
+        scope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    containerManager.install(spec) { p, label ->
+                        // Callback-nya datang dari thread IO (unduh/ekstrak),
+                        // sedangkan state Compose hanya boleh ditulis dari main
+                        // thread — jadi lompat ke scope (dispatcher main).
+                        scope.launch {
+                            containerProgress = p
+                            containerProgressLabel = label
+                        }
+                    }
+                }
+                val error = result.exceptionOrNull()
+                if (error != null) {
+                    containerErrors = containerErrors +
+                        (spec.id to (error.message ?: I18n.s.failedPrefix))
+                } else {
+                    message = I18n.s.containerRestartHint
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // Dibatalkan (mis. layar ditinggal) — bukan kegagalan user-facing.
+                throw e
+            } finally {
+                installingContainerId = null
+                containerProgress = 0
+                containerProgressLabel = ""
+                refresh()
+            }
+        }
+    }
+
+    /** Hapus container + shim-nya; dikunci selama engine hidup (gating di UI). */
+    fun removeContainer(spec: ContainerSpec) {
+        if (removingContainerId != null) return
+        removingContainerId = spec.id
+        containerErrors = containerErrors - spec.id
+        scope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) { containerManager.remove(spec) }
+                val error = result.exceptionOrNull()
+                if (error != null) {
+                    containerErrors = containerErrors +
+                        (spec.id to (error.message ?: I18n.s.failedPrefix))
+                }
+            } finally {
+                removingContainerId = null
+                refresh()
+            }
+        }
+    }
+
+    /**
      * Jadikan distro ini distro aktif.
      *
      * Kalau distro belum terpasang, JANGAN langsung dipindah — user bisa
@@ -375,6 +495,121 @@ fun DistroScreen(
                                 }) { Text(I18n.s.distroTermuxOpen) }
                                 Spacer(Modifier.weight(1f))
                                 TextButton(onClick = { refresh() }) { Text(I18n.s.reload) }
+                            }
+                        }
+                    }
+                }
+
+                // --- Tool containers --------------------------------------------
+                // Hanya untuk proot: runtime Termux tidak memakai bind container,
+                // jadi memasang container di sana tidak ada gunanya.
+                if (runtime == RuntimeMode.PROOT) {
+                    Text(
+                        I18n.s.containersTitle,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                    ContainerCatalog.ALL.forEach { spec ->
+                        val isInstalled = spec.id in installedContainerIds
+                        val isInstalling = spec.id == installingContainerId
+                        val isRemoving = spec.id == removingContainerId
+                        val error = containerErrors[spec.id]
+                        val engineRunning = engine.isRunning()
+                        ClayCard(modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        spec.label,
+                                        fontWeight = FontWeight.SemiBold,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                    )
+                                    Spacer(Modifier.weight(1f))
+                                    Text(
+                                        if (isInstalled) I18n.s.containerInstalled else I18n.s.containerNotInstalled,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                Text(
+                                    spec.summary,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    if (spec.approxSizeMb > 0) {
+                                        Text(
+                                            "~${spec.approxSizeMb} MB",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    containerSizes[spec.id]?.let {
+                                        Text(
+                                            "· $it",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                                if (!containersSupported) {
+                                    Text(
+                                        I18n.s.distroNotAvailable,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                }
+
+                                // Error pemasangan/penghapusan container ini (bukan global).
+                                error?.let {
+                                    Text(
+                                        it,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                }
+
+                                if (isInstalling) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            CircularProgressIndicator(modifier = Modifier.width(16.dp))
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(
+                                                containerProgressLabel.ifBlank { I18n.s.distroDownloading },
+                                                style = MaterialTheme.typography.labelSmall,
+                                            )
+                                        }
+                                        LinearProgressIndicator(
+                                            progress = { containerProgress / 100f },
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+                                    }
+                                }
+
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    if (isInstalled) {
+                                        // Hapus dikunci selama engine hidup: shim yang
+                                        // sedang dipakai sesi aktif akan menggantung.
+                                        TextButton(
+                                            onClick = { removeContainer(spec) },
+                                            enabled = !engineRunning && !isRemoving &&
+                                                installingContainerId == null,
+                                        ) { Text(I18n.s.containerRemove) }
+                                    } else {
+                                        TextButton(
+                                            onClick = { installContainer(spec) },
+                                            enabled = prootReady && containersSupported &&
+                                                !isInstalling && installingContainerId == null,
+                                        ) { Text(I18n.s.containerInstall) }
+                                    }
+                                }
+                                if (isInstalled && engineRunning) {
+                                    Text(
+                                        I18n.s.containerRemoveBusy,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                             }
                         }
                     }
