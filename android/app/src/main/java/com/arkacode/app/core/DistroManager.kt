@@ -103,6 +103,17 @@ class DistroManager(
 
         /** Daftar ABI yang binary proot-nya benar-benar dibundel. */
         val SUPPORTED_ABIS = Build.SUPPORTED_ABIS.toList()
+
+        /**
+         * Argumen bind proot yang membuat folder containers host terlihat di
+         * `/opt/containers` di dalam guest (Task 5).
+         *
+         * [ContainerManager.containerBindArgs] adalah satu-satunya sumber
+         * kebenaran; fungsi ini hanya mendelegasikan agar argv builder distro
+         * tidak perlu bergantung langsung ke kelas manajer container.
+         */
+        fun containerBindArgs(containersDir: String): List<String> =
+            ContainerManager.containerBindArgs(containersDir)
     }
 
     private val distroRoot = File(context.filesDir, "distro").apply { mkdirs() }
@@ -387,8 +398,16 @@ class DistroManager(
                 }
             }
             File(rootfsDir, "root/.profile").writeText(
-                "export PATH=${guestPathValue()}\nexport PS1='\\$ '\\n",
+                "export PATH=${guestPathValueWithContainers()}\nexport PS1='\\$ '\\n",
             )
+        }
+        // Shim tool container (`/opt/containers/bin/<id>-<tool>`) ber-shebang
+        // `#!/bin/sh`. Rootfs layout Termux menaruh semuanya di dalam prefix
+        // dan tidak punya `/bin/sh` di root rootfs — tanpa symlink ini shim
+        // gagal dieksekusi dan container mati total di distro Termux. Helper
+        // no-op untuk layout non-Termux (prefix kosong).
+        if (spec.guestPrefix.isNotEmpty()) {
+            runCatching { ContainerRootfs.ensureShForTermuxLayout(rootfsDir, spec.guestPrefix) }
         }
         // Runtime musl: tanpa ini binary opencode (musl-dinamis) tidak bisa
         // jalan di distro non-Alpine.
@@ -445,11 +464,26 @@ class DistroManager(
         // 2. libstdc++ + libgcc ke folder engine (-> /opt/arkacode/lib di guest)
         MuslRuntime.stageEngineLibs(context, arch)
 
-        // 3. file path milik musl
+        // 3. file path milik musl. Diawali runtime engine (`/opt/arkacode/lib`)
+        //    lalu tiap container terpasang (`/opt/containers/<id>/rootfs/usr/lib`,
+        //    tempat lib python/node). appendMuslPath idempoten — aman ditulis
+        //    ulang tiap engine start tanpa path menumpuk.
         val etcDir = File(rootfsDir, "etc")
         if (!etcDir.isDirectory) runCatching { etcDir.mkdirs() }
         runCatching {
-            File(etcDir, "ld-musl-$arch.path").writeText(MuslRuntime.GUEST_LIB_DIR)
+            val pathFile = File(etcDir, "ld-musl-$arch.path")
+            var current = pathFile.takeIf { it.isFile }?.let { runCatching { it.readText() }.getOrNull() }
+                ?: MuslRuntime.GUEST_LIB_DIR
+            ContainerCatalog.ALL.forEach { spec ->
+                val rootfs = File(context.filesDir, "containers/${spec.id}/rootfs")
+                if (rootfs.isDirectory) {
+                    current = ContainerRootfs.appendMuslPath(
+                        current,
+                        ContainerManager.guestPath(spec.id) + "/usr/lib",
+                    )
+                }
+            }
+            pathFile.writeText(current)
         }
     }
 
@@ -814,6 +848,17 @@ class DistroManager(
         return if (bin == "/usr/bin") base else "$bin:$base"
     }
 
+    /**
+     * PATH di dalam guest dengan shim tool container di depan
+     * (`/opt/containers/bin:<guestPathValue()>`).
+     *
+     * Dipakai di `buildProotCommand` + di `postInstall` (`root/.profile`) agar
+     * `python3`/`node` yang di-shim [ContainerManager] bisa dipanggil dari
+     * distro mana pun. Bind `containers → /opt/containers` ada di
+     * [containerBindArgs] (dipasang oleh argv builder — Task 5).
+     */
+    fun guestPathValueWithContainers(): String = "/opt/containers/bin:${guestPathValue()}"
+
     /** Path `env` di dalam guest — dipakai untuk membersihkan environment. */
     fun guestEnvPath(): String = guestBinary("env") ?: "${guestBinDir()}/env"
 
@@ -898,11 +943,14 @@ class DistroManager(
         if (bindWorkspace && pw != null) {
             argv += listOf("-b", "${pw.absolutePath}:/root/workspace")
         }
+        // Tool container (Task 5): `containers/` → `/opt/containers` supaya
+        // shim `/opt/containers/bin/<id>-<tool>` ada di PATH guest.
+        argv += containerBindArgs(File(context.filesDir, "containers").absolutePath)
         argv += listOf(
             guestEnvPath(),
             "-i",
             "HOME=${guestHomePath()}",
-            "PATH=${guestPathValue()}",
+            "PATH=${guestPathValueWithContainers()}",
             "TERM=xterm-256color",
             "LANG=C.UTF-8",
             "PROOT_LOADER=${loader.absolutePath}",

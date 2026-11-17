@@ -185,6 +185,7 @@ class EngineManager(private val context: Context) {
         val loader = distro.loaderBinary() ?: return null
         if (!distro.isInstalled()) return null
         val pw = workspaceDir
+        val containersDir = File(context.filesDir, "containers")
         val argv = mutableListOf(
             proot.absolutePath,
             "--kill-on-exit",
@@ -200,7 +201,7 @@ class EngineManager(private val context: Context) {
             "-b", distro.rootfsDir.absolutePath + "/tmp:/dev/shm",
             "-b", "${pw.absolutePath}:/root/workspace",
             "-b", "${engineDir.absolutePath}:/opt/arkacode",
-        )
+        ) + ContainerManager.containerBindArgs(containersDir.absolutePath)
         // Distro layout Termux (built-in) berjalan sebagai user biasa seperti app
         // Termux asli — pkg/apt di dalamnya memblokir root, fake-root malah mematikannya.
         if (distro.spec.layout == RootfsLayout.TERMUX_PREFIX) argv.remove("-0")
@@ -213,7 +214,7 @@ class EngineManager(private val context: Context) {
             "/usr/bin/env",
             "-i",
             "HOME=/root",
-            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "PATH=/opt/containers/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             "TERM=xterm-256color",
             "LANG=C.UTF-8",
             "PROOT_LOADER=${loader.absolutePath}",
@@ -756,6 +757,7 @@ class EngineManager(private val context: Context) {
         val loader = distro.loaderBinary() ?: return null
         if (!distro.isInstalled()) return null
         val pw = workspaceDir
+        val containersDir = File(context.filesDir, "containers")
         val argv = mutableListOf(
             proot.absolutePath,
             "--kill-on-exit",
@@ -772,7 +774,7 @@ class EngineManager(private val context: Context) {
             "-b", "${pw.absolutePath}:/root/workspace",
             "-b", "${engineDir.absolutePath}:/opt/arkacode",
             "-b", "${opencodeDataDir.absolutePath}:/opt/arkacode-data",
-        )
+        ) + ContainerManager.containerBindArgs(containersDir.absolutePath)
         // Distro layout Termux (built-in) berjalan sebagai user biasa seperti app
         // Termux asli — pkg/apt di dalamnya memblokir root, fake-root malah mematikannya.
         if (distro.spec.layout == RootfsLayout.TERMUX_PREFIX) argv.remove("-0")
@@ -781,7 +783,7 @@ class EngineManager(private val context: Context) {
             "-i",
             "HOME=${distro.guestHomePath()}",
             "XDG_DATA_HOME=/opt/arkacode-data",
-            "PATH=${distro.guestPathValue()}",
+            "PATH=${distro.guestPathValueWithContainers()}",
             "TERM=xterm-256color",
             "LANG=C.UTF-8",
             "PROOT_LOADER=${loader.absolutePath}",
