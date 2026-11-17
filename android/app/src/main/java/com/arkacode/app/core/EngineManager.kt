@@ -201,7 +201,10 @@ class EngineManager(private val context: Context) {
             "-b", distro.rootfsDir.absolutePath + "/tmp:/dev/shm",
             "-b", "${pw.absolutePath}:/root/workspace",
             "-b", "${engineDir.absolutePath}:/opt/arkacode",
-        ) + ContainerManager.containerBindArgs(containersDir.absolutePath)
+        )
+        // Tool container: bind ditambahkan ke MutableList yang sama (jangan pakai
+        // `+` — hasilnya List immutable dan `argv.remove("-0")` di bawah gagal).
+        argv += ContainerManager.containerBindArgs(containersDir.absolutePath)
         // Distro layout Termux (built-in) berjalan sebagai user biasa seperti app
         // Termux asli — pkg/apt di dalamnya memblokir root, fake-root malah mematikannya.
         if (distro.spec.layout == RootfsLayout.TERMUX_PREFIX) argv.remove("-0")
@@ -774,7 +777,10 @@ class EngineManager(private val context: Context) {
             "-b", "${pw.absolutePath}:/root/workspace",
             "-b", "${engineDir.absolutePath}:/opt/arkacode",
             "-b", "${opencodeDataDir.absolutePath}:/opt/arkacode-data",
-        ) + ContainerManager.containerBindArgs(containersDir.absolutePath)
+        )
+        // Tool container: bind ditambahkan ke MutableList yang sama (jangan pakai
+        // `+` — hasilnya List immutable dan `argv.remove("-0")` di bawah gagal).
+        argv += ContainerManager.containerBindArgs(containersDir.absolutePath)
         // Distro layout Termux (built-in) berjalan sebagai user biasa seperti app
         // Termux asli — pkg/apt di dalamnya memblokir root, fake-root malah mematikannya.
         if (distro.spec.layout == RootfsLayout.TERMUX_PREFIX) argv.remove("-0")
