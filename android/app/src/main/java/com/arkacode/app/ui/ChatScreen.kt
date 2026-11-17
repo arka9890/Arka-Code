@@ -3,6 +3,7 @@ package com.arkacode.app.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -29,6 +30,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -292,6 +294,72 @@ fun ChatScreen(
     }
     LaunchedEffect(showFilesTab) {
         if (!showFilesTab) refreshAll()
+    }
+
+    // Clipboard paste listener untuk mendeteksi gambar yang di-paste
+    DisposableEffect(context) {
+        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val listener = ClipboardManager.OnPrimaryClipChangedListener {
+            val clip = cm.primaryClip ?: return@OnPrimaryClipChangedListener
+            if (clip.itemCount == 0) return@OnPrimaryClipChangedListener
+
+            val item = clip.getItemAt(0)
+
+            // Jika ada URI (gambar dari gallery atau file), langsung import
+            item.uri?.let { uri ->
+                scope.launch {
+                    val result = withContext(Dispatchers.IO) {
+                        Attachments.import(context, sessionId, uri)
+                    }
+                    when (result) {
+                        is ImportResult.Success -> {
+                            attachments = attachments + result.attachment
+                        }
+                        is ImportResult.Failure -> {
+                            // Tampilkan error singkat (bisa ditambahkan snackbar nanti)
+                        }
+                    }
+                }
+            }
+
+            // Jika ada base64 image (data URI) dari clipboard
+            item.text?.let { text ->
+                val textStr = text.toString().trim()
+                if (textStr.startsWith("data:image/")) {
+                    scope.launch {
+                        val result = processBase64ImageFromClipboard(context, sessionId, textStr)
+                        if (result is ImportResult.Success) {
+                            attachments = attachments + result.attachment
+                        }
+                    }
+                }
+            }
+        }
+
+        cm.addPrimaryClipChangedListener(listener)
+
+        onDispose {
+            cm.removePrimaryClipChangedListener(listener)
+        }
+    }
+
+    // Fungsi proses base64 image dari clipboard
+    fun processBase64ImageFromClipboard(context: Context, sessionId: String, dataUri: String): ImportResult {
+        // Extract base64 part from data URI
+        val base64Data = dataUri.substringAfter("base64,")
+        val bytes = runCatching { Base64.decode(base64Data, Base64.DEFAULT) }.getOrNull()
+            ?: return ImportResult.Failure(ImportResult.Reason.UNREADABLE)
+
+        if (bytes.size > Attachments.MAX_BYTES) {
+            return ImportResult.Failure(ImportResult.Reason.TOO_LARGE)
+        }
+
+        // Determine mime type from data URI
+        val mime = dataUri.substringAfter("data:").substringBefore(";")
+        val name = "clipboard-image.${mime.substringAfterLast('/', "")}"
+
+        // Save to temp file and import
+        return Attachments.importFromBytes(context, sessionId, name, bytes, mime)
     }
 
     val lastUser = messages.filterIsInstance<ChatItem.User>().lastOrNull()

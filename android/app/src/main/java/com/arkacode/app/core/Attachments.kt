@@ -38,6 +38,21 @@ object Attachments {
     /** Batas per lampiran, di bawah batas ter-decode 20 MiB milik server. */
     const val MAX_BYTES = 6L * 1024 * 1024
 
+    /**
+     * Impor gambar dari bytes (untuk clipboard paste).
+     * [name] berisi nama berkas dengan ekstensi yang sesuai.
+     * [mime] adalah tipe MIME (contoh: "image/png", "image/jpeg").
+     */
+    fun importFromBytes(context: Context, sessionId: String, name: String, bytes: ByteArray, mime: String): ImportResult {
+        if (bytes.size > MAX_BYTES) {
+            return ImportResult.Failure(ImportResult.Reason.TOO_LARGE)
+        }
+
+        val encoded = Base64.encodeToString(bytes, Base64.NO_WRAP)
+        copyBestEffort(context, sessionId, name, bytes)
+        return ImportResult.Success(Attachment(name, "data:$mime;base64,$encoded", mime))
+    }
+
     fun import(context: Context, sessionId: String, uri: Uri): ImportResult {
         val name = safeName(displayName(context, uri) ?: "file")
         val input = context.contentResolver.openInputStream(uri)
