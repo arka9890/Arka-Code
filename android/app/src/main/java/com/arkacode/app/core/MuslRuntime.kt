@@ -73,11 +73,12 @@ object MuslRuntime {
 
     /**
      * Kandidat URL unduhan paket runtime: CDN utama dulu, lalu cermin.
-     * Murni (tanpa jaringan) — diuji di JVM.
+     * URL hasil SUDAH utuh (repo + arch + file) — pemanggil tinggal memakai
+     * `download(url, apk)`. Murni (tanpa jaringan) — diuji di JVM.
      */
-    fun repoUrls(file: String): List<String> = buildList {
-        add("$ALPINE_REPO/$file")
-        MIRRORS.forEach { add("$it/$ALPINE_BRANCH/$file") }
+    fun repoUrls(arch: String, file: String): List<String> = buildList {
+        add("$ALPINE_REPO/$arch/$file")
+        MIRRORS.forEach { add("$it/$ALPINE_BRANCH/main/$arch/$file") }
     }
 
     /** Folder di dalam guest tempat libstdc++/libgcc musl ditaruh (bind dari folder engine). */
@@ -161,8 +162,8 @@ object MuslRuntime {
                 // rootfs distro. Tanpa mirror, satu CDN yang tak terjangkau
                 // (mis. lewat VPN) membuat runtime musl gagal senyap.
                 var downloaded = false
-                for (url in repoUrls(pkg.file)) {
-                    if (download("$url/$arch/${pkg.file}", apk) && sha256(apk) == hashes[pkg.file]) {
+                for (url in repoUrls(arch, pkg.file)) {
+                    if (download(url, apk) && sha256(apk) == hashes[pkg.file]) {
                         downloaded = true
                         break
                     }
