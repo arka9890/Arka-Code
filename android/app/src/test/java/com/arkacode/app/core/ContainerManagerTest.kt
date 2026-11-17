@@ -21,13 +21,29 @@ class ContainerManagerTest {
     }
 
     @Test
-    fun `rootfsDirName memakai id container`() {
-        assertEquals("python", ContainerManager.rootfsDirName("python"))
-        assertEquals("node", ContainerManager.rootfsDirName("node"))
-        // konsisten dengan guestPath: komponen terakhir = nama folder rootfs
+    fun `containerDirName memakai id container`() {
+        assertEquals("python", ContainerManager.containerDirName("python"))
+        assertEquals("node", ContainerManager.containerDirName("node"))
+        // rootfs SELALU di dalam <folder container>/rootfs, dan itu harus sama
+        // dengan path yang dilihat guest. Ini penjaga regresi bug "rootfs satu
+        // tingkat terlalu dalam" (containers/<id>/<id>/rootfs): staging
+        // mengekstrak ke <staging>/rootfs lalu rename → containers/<id>/rootfs.
         assertEquals(
-            ContainerManager.rootfsDirName("python"),
-            ContainerManager.guestPath("python").substringAfterLast('/'),
+            ContainerManager.containerDirName("python") + "/" + ContainerManager.ROOTFS_SUBDIR,
+            ContainerManager.guestPath("python").removePrefix("/opt/containers/"),
+        )
+        assertEquals(
+            ContainerManager.containerDirName("node") + "/" + ContainerManager.ROOTFS_SUBDIR,
+            ContainerManager.guestPath("node").removePrefix("/opt/containers/"),
+        )
+    }
+
+    @Test
+    fun `ROOTFS_SUBDIR adalah nama folder rootfs`() {
+        assertEquals("rootfs", ContainerManager.ROOTFS_SUBDIR)
+        assertTrue(
+            "guestPath harus berakhir dengan /<ROOTFS_SUBDIR>",
+            ContainerManager.guestPath("python").endsWith("/" + ContainerManager.ROOTFS_SUBDIR),
         )
     }
 

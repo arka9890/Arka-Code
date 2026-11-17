@@ -49,8 +49,20 @@ class ContainerManager(
         /** Path rootfs container di dalam guest, mis. `/opt/containers/python/rootfs`. */
         fun guestPath(id: String): String = "/opt/containers/$id/rootfs"
 
-        /** Nama folder rootfs di dalam `containers/<id>/`. */
-        fun rootfsDirName(id: String): String = id
+        /** Nama folder container di dalam `containers/` (mis. `containers/python`). */
+        fun containerDirName(id: String): String = id
+
+        /**
+         * Nama folder rootfs **di dalam** folder container — selalu `rootfs`.
+         *
+         * Konstanta ini dipakai saat menyiapkan staging: isi arsip diekstrak ke
+         * `<staging>/rootfs` supaya `rename(staging → containers/<id>)` langsung
+         * menghasilkan `containers/<id>/rootfs` — path yang sama dengan
+         * [rootfsDir] dan [guestPath]. Tanpa ini rootfs berakhir satu tingkat
+         * terlalu dalam (`containers/<id>/<id>/rootfs`) dan shim menunjuk path
+         * yang tidak ada.
+         */
+        const val ROOTFS_SUBDIR: String = "rootfs"
 
         /**
          * Argumen bind proot yang membuat folder containers host terlihat di
@@ -80,7 +92,8 @@ class ContainerManager(
     fun containersDir(): File = File(context.filesDir, "containers").apply { mkdirs() }
 
     /** `<filesDir>/containers/<id>/rootfs`. */
-    fun rootfsDir(spec: ContainerSpec): File = File(containersDir(), "${rootfsDirName(spec.id)}/rootfs")
+    fun rootfsDir(spec: ContainerSpec): File =
+        File(containersDir(), "${containerDirName(spec.id)}/$ROOTFS_SUBDIR")
 
     /** `<filesDir>/containers/bin` — tempat shim. */
     fun shimDir(): File = File(containersDir(), "bin")
@@ -113,7 +126,7 @@ class ContainerManager(
 
     /** Ukuran `containers/<id>` dalam MB (`%.1f MB`); 0.0 bila belum ada. */
     fun sizeLabel(spec: ContainerSpec): String {
-        val dir = File(containersDir(), spec.id)
+        val dir = File(containersDir(), containerDirName(spec.id))
         if (!dir.isDirectory) return "0.0 MB"
         val bytes = dir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
         return String.format(Locale.US, "%.1f MB", bytes / 1024.0 / 1024.0)
@@ -186,7 +199,10 @@ class ContainerManager(
     ) {
         val containers = containersDir()
         val staging = stagingRoot(spec)
-        val stagingRootfs = File(staging, rootfsDirName(spec.id))
+        // Isi arsip diekstrak ke `<staging>/rootfs` — BUKAN `<staging>/<id>`.
+        // Dengan begitu `renameTo(containers/<id>)` menghasilkan
+        // `containers/<id>/rootfs`, persis [rootfsDir] dan [guestPath].
+        val stagingRootfs = File(staging, ROOTFS_SUBDIR)
         val archive = File(context.cacheDir, "${spec.id}.tar.gz")
 
         onProgress(0, "Mengunduh ${url.substringAfterLast('/')} (${index + 1}/${total})…")
@@ -221,7 +237,7 @@ class ContainerManager(
         }
 
         // Tukar staging → rootfs (rootfs lama dihapus hanya setelah yang baru siap).
-        val target = File(containers, spec.id)
+        val target = File(containers, containerDirName(spec.id))
         target.deleteRecursively()
         if (!staging.renameTo(target)) {
             staging.copyRecursively(target, overwrite = true)
