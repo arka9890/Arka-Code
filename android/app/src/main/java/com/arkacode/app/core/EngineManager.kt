@@ -185,7 +185,7 @@ class EngineManager(private val context: Context) {
         val loader = distro.loaderBinary() ?: return null
         if (!distro.isInstalled()) return null
         val pw = workspaceDir
-        val containersDir = File(context.filesDir, "containers")
+        val containersDir = File(context.filesDir, "containers").apply { mkdirs() }
         val argv = mutableListOf(
             proot.absolutePath,
             "--kill-on-exit",
@@ -604,7 +604,12 @@ class EngineManager(private val context: Context) {
             reapStrayServers()
             // Pastikan runtime musl ada di rootfs (loader + libc) — binary
             // opencode musl-dinamis tidak bisa start tanpa itu di distro glibc.
-            distro.ensureMuslRuntime()
+            // Dulu kegagalan ini senyap dan baru terasa sebagai
+            // `env: '/opt/arkacode/opencode': No such file or directory`.
+            check(distro.ensureMuslRuntime()) {
+                "Runtime musl gagal dipasang (unduh paket Alpine dari CDN+mirror tidak berhasil — " +
+                    "cek koneksi/VPN). Tanpa loader ini, opencode tidak bisa dijalankan di distro ini."
+            }
             ensureGuestLibs().getOrThrow()
             // Migrasi sekali-jalan: data session lama (per-rootfs) disalin ke folder bersama agar sinkron antar distro.
             val sharedData = File(opencodeDataDir, "opencode")
@@ -760,7 +765,7 @@ class EngineManager(private val context: Context) {
         val loader = distro.loaderBinary() ?: return null
         if (!distro.isInstalled()) return null
         val pw = workspaceDir
-        val containersDir = File(context.filesDir, "containers")
+        val containersDir = File(context.filesDir, "containers").apply { mkdirs() }
         val argv = mutableListOf(
             proot.absolutePath,
             "--kill-on-exit",

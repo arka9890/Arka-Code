@@ -436,11 +436,18 @@ class DistroManager(
      *     loader musl mencari library DI SITU (bukan libstdc++ glibc milik
      *     distro, yang tidak kompatibel).
      */
-    fun ensureMuslRuntime() {
-        val arch = MuslRuntime.archFor(abi) ?: return
-        val dir = MuslRuntime.ensure(context, arch) ?: return
+    fun ensureMuslRuntime(): Boolean {
+        val arch = MuslRuntime.archFor(abi) ?: return false
+        val dir = MuslRuntime.ensure(context, arch)
+        if (dir == null) {
+            android.util.Log.w(
+                "DistroManager",
+                "ensureMuslRuntime: runtime musl tidak tersedia (unduh CDN+mirror gagal / offline)",
+            )
+            return false
+        }
         val loader = File(dir, "ld-musl-$arch.so.1")
-        if (!loader.isFile) return
+        if (!loader.isFile) return false
 
         // 1. loader + libc ke <rootfs>/lib
         val libDir = File(rootfsDir, "lib")
@@ -485,6 +492,7 @@ class DistroManager(
             }
             pathFile.writeText(current)
         }
+        return true
     }
 
     fun remove() {

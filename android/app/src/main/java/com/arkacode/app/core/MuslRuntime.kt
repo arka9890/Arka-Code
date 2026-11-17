@@ -60,6 +60,26 @@ object MuslRuntime {
     /** Basis URL repository Alpine. */
     const val ALPINE_REPO = "https://dl-cdn.alpinelinux.org/alpine/$ALPINE_BRANCH/main"
 
+    /**
+     * Cermin alternatif — pola sama dengan [DistroManager] (rootfs distro).
+     * Tanpa ini, CDN tunggal yang tidak terjangkau (mis. lewat VPN) membuat
+     * runtime musl gagal senyap dan opencode mati ENOENT di distro glibc.
+     */
+    val MIRRORS = listOf(
+        "https://mirror.leaseweb.com/alpine",
+        "https://ftp.halifax.rwth-aachen.de/alpine",
+        "https://mirrors.tuna.tsinghua.edu.cn/alpine",
+    )
+
+    /**
+     * Kandidat URL unduhan paket runtime: CDN utama dulu, lalu cermin.
+     * Murni (tanpa jaringan) — diuji di JVM.
+     */
+    fun repoUrls(file: String): List<String> = buildList {
+        add("$ALPINE_REPO/$file")
+        MIRRORS.forEach { add("$it/$ALPINE_BRANCH/$file") }
+    }
+
     /** Folder di dalam guest tempat libstdc++/libgcc musl ditaruh (bind dari folder engine). */
     const val GUEST_LIB_DIR = "/opt/arkacode/lib"
 
@@ -137,9 +157,19 @@ object MuslRuntime {
             if (target.isFile && sha256(target) == hashes[pkg.file]) continue
             val apk = File(dir, pkg.file)
             if (!apk.isFile || sha256(apk) != hashes[pkg.file]) {
-                if (!download("$ALPINE_REPO/$arch/${pkg.file}", apk)) return null
-                if (sha256(apk) != hashes[pkg.file]) {
+                // CDN utama + mirror dicoba berurutan — pola sama dengan unduhan
+                // rootfs distro. Tanpa mirror, satu CDN yang tak terjangkau
+                // (mis. lewat VPN) membuat runtime musl gagal senyap.
+                var downloaded = false
+                for (url in repoUrls(pkg.file)) {
+                    if (download("$url/$arch/${pkg.file}", apk) && sha256(apk) == hashes[pkg.file]) {
+                        downloaded = true
+                        break
+                    }
+                }
+                if (!downloaded) {
                     apk.delete()
+                    android.util.Log.w("MuslRuntime", "gagal unduh ${pkg.file} dari CDN+mirror")
                     return null
                 }
             }
@@ -179,8 +209,7 @@ object MuslRuntime {
 
     private fun download(url: String, target: File): Boolean {
         return runCatching {
-            val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-                connectTimeout = 20_000
+            val conn = (URL(url).openConnection() as HttpURLConnection).apply {                connectTimeout = 20_000
                 readTimeout = 120_000
                 instanceFollowRedirects = true
                 setRequestProperty("User-Agent", "arkacode-android")
