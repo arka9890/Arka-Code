@@ -19,20 +19,20 @@ class MuslRuntimeUrlsTest {
 
     @Test
     fun `repoUrls CDN utama di posisi pertama dengan URL utuh`() {
-        val urls = MuslRuntime.repoUrls("aarch64", "musl-1.2.5-r3.apk")
+        val urls = MuslRuntime.repoUrls("aarch64", "musl-1.2.5-r4.apk")
         // Perilaku lama dipertahankan: CDN utama tetap kandidat pertama.
         assertEquals(
-            "${MuslRuntime.ALPINE_REPO}/aarch64/musl-1.2.5-r3.apk",
+            "${MuslRuntime.ALPINE_REPO}/aarch64/musl-1.2.5-r4.apk",
             urls.first(),
         )
     }
 
     @Test
     fun `repoUrls menyertakan semua mirror dengan struktur main-arch-file`() {
-        val urls = MuslRuntime.repoUrls("x86_64", "musl-1.2.5-r3.apk")
+        val urls = MuslRuntime.repoUrls("x86_64", "musl-1.2.5-r4.apk")
         assertEquals(1 + MuslRuntime.MIRRORS.size, urls.size)
         MuslRuntime.MIRRORS.forEach { mirror ->
-            val expected = "$mirror/${MuslRuntime.ALPINE_BRANCH}/main/x86_64/musl-1.2.5-r3.apk"
+            val expected = "$mirror/${MuslRuntime.ALPINE_BRANCH}/main/x86_64/musl-1.2.5-r4.apk"
             assertTrue(
                 "mirror $mirror harus menghasilkan $expected",
                 urls.contains(expected),

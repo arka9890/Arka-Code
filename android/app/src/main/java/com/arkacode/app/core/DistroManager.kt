@@ -442,7 +442,7 @@ class DistroManager(
         if (dir == null) {
             android.util.Log.w(
                 "DistroManager",
-                "ensureMuslRuntime: runtime musl tidak tersedia (unduh CDN+mirror gagal / offline)",
+                "ensureMuslRuntime: runtime musl tidak tersedia — ${MuslRuntime.lastError ?: "sebab tidak diketahui"}",
             )
             return false
         }

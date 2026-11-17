@@ -607,8 +607,12 @@ class EngineManager(private val context: Context) {
             // Dulu kegagalan ini senyap dan baru terasa sebagai
             // `env: '/opt/arkacode/opencode': No such file or directory`.
             check(distro.ensureMuslRuntime()) {
-                "Runtime musl gagal dipasang (unduh paket Alpine dari CDN+mirror tidak berhasil — " +
-                    "cek koneksi/VPN). Tanpa loader ini, opencode tidak bisa dijalankan di distro ini."
+                buildString {
+                    append("Runtime musl gagal dipasang — paket loader Alpine tidak berhasil diunduh.")
+                    MuslRuntime.lastError?.let { append(" Penyebab: ").append(it).append('.') }
+                    append(" Coba lagi saat koneksi stabil; kalau berulang, repo Alpine mungkin baru mengganti versi paketnya.")
+                    append(" Tanpa loader ini, opencode tidak bisa dijalankan di distro ini.")
+                }
             }
             ensureGuestLibs().getOrThrow()
             // Migrasi sekali-jalan: data session lama (per-rootfs) disalin ke folder bersama agar sinkron antar distro.

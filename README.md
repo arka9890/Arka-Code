@@ -199,6 +199,18 @@ Runtime diambil dari paket Alpine (`musl`, `libstdc++`, `libgcc` — libc yang
 dipakai untuk membangun binary opencode), diunduh sekali lalu di-cache di
 `filesDir/musl/`. Ukurannya ±1,3 MB.
 
+Nama berkas paket **tidak dipatok di kode**: app membaca `APKINDEX.tar.gz`
+dari repo (CDN + mirror) lalu memakai versi yang benar-benar ada di sana,
+diverifikasi lewat checksum `C:` milik indeks (SHA-1 member control — sama
+dengan yang diperiksa `apk`). Ini penting karena repo Alpine hanya menyimpan
+satu revisi per paket: begitu Alpine merilis `musl-1.2.5-r4`, berkas
+`musl-1.2.5-r3.apk` langsung hilang dari CDN **dan semua mirror**, sehingga
+nama yang dipatok akan 404. Dulu itulah yang membuat pemasangan runtime gagal
+dengan pesan "cek koneksi/VPN" padahal jaringan sehat dan rootfs distro
+berhasil diunduh. Kalau indeks tidak terjangkau (offline), app jatuh ke nama
+patokan yang tersimpan di kode, dan cabang `v3.21`/`v3.22` dicoba bila
+`v3.20` sudah ditarik dari CDN.
+
 > Berganti distro/runtime butuh **restart server** (Pengaturan → Stop → jalankan
 > lagi), karena proot dan env server sudah ditentukan saat proses start.
 
