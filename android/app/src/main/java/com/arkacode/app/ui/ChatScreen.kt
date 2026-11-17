@@ -327,7 +327,17 @@ fun ChatScreen(
                 val textStr = text.toString().trim()
                 if (textStr.startsWith("data:image/")) {
                     scope.launch {
-                        val result = processBase64ImageFromClipboard(context, sessionId, textStr)
+                        val base64Data = textStr.substringAfter("base64,")
+                        val bytes = runCatching { Base64.decode(base64Data, Base64.DEFAULT) }.getOrNull()
+                        val result = if (bytes == null) {
+                            ImportResult.Failure(ImportResult.Reason.UNREADABLE)
+                        } else if (bytes.size > Attachments.MAX_BYTES) {
+                            ImportResult.Failure(ImportResult.Reason.TOO_LARGE)
+                        } else {
+                            val mime = textStr.substringAfter("data:").substringBefore(";")
+                            val name = "clipboard-image.${mime.substringAfterLast('/', "")}"
+                            Attachments.importFromBytes(context, sessionId, name, bytes, mime)
+                        }
                         if (result is ImportResult.Success) {
                             attachments = attachments + result.attachment
                         }
@@ -341,25 +351,6 @@ fun ChatScreen(
         onDispose {
             cm.removePrimaryClipChangedListener(listener)
         }
-    }
-
-    // Fungsi proses base64 image dari clipboard
-    fun processBase64ImageFromClipboard(context: Context, sessionId: String, dataUri: String): ImportResult {
-        // Extract base64 part from data URI
-        val base64Data = dataUri.substringAfter("base64,")
-        val bytes = runCatching { Base64.decode(base64Data, Base64.DEFAULT) }.getOrNull()
-            ?: return ImportResult.Failure(ImportResult.Reason.UNREADABLE)
-
-        if (bytes.size > Attachments.MAX_BYTES) {
-            return ImportResult.Failure(ImportResult.Reason.TOO_LARGE)
-        }
-
-        // Determine mime type from data URI
-        val mime = dataUri.substringAfter("data:").substringBefore(";")
-        val name = "clipboard-image.${mime.substringAfterLast('/', "")}"
-
-        // Save to temp file and import
-        return Attachments.importFromBytes(context, sessionId, name, bytes, mime)
     }
 
     val lastUser = messages.filterIsInstance<ChatItem.User>().lastOrNull()
