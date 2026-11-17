@@ -305,21 +305,18 @@ fun ChatScreen(
 
             val item = clip.getItemAt(0)
 
-        // Handle image data directly from clipboard (image mime type)
-        if (item.mimeTypes?.contains(ClipData.MIME_TYPE_IMAGE) == true) {
-            val imageUri = item.getItemData(ClipData.MIME_TYPE_IMAGE)?.uri
-            if (imageUri != null) {
-                scope.launch {
-                    val result = withContext(Dispatchers.IO) {
-                        Attachments.import(context, sessionId, imageUri)
+        // Handle image data directly from clipboard
+        if (item.uri?.let { uri -> uri.toString().contains("image") } == true) {
+            scope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    Attachments.import(context, sessionId, item.uri!!)
+                }
+                when (result) {
+                    is ImportResult.Success -> {
+                        attachments = attachments + result.attachment
                     }
-                    when (result) {
-                        is ImportResult.Success -> {
-                            attachments = attachments + result.attachment
-                        }
-                        is ImportResult.Failure -> {
-                            // Tampilkan error singkat (bisa ditambahkan snackbar nanti)
-                        }
+                    is ImportResult.Failure -> {
+                        // Tampilkan error singkat (bisa ditambahkan snackbar nanti)
                     }
                 }
             }
