@@ -31,6 +31,12 @@ Tes lengkap ada di plan (lihat task-brief dari plan file — tapi plan tidak dip
 - String setupScript adalah raw string Kotlin yang isinya script sh valid (`apk add --no-cache ...`).
 - Ikuti gaya kode DistroSpec.kt (naming, komentar KDoc ringkas di objek).
 
+## Build/Test Rules (PENTING — override instruksi umum)
+
+- **JANGAN menjalankan gradle build/test apa pun di mesin lokal** (tidak ada `./gradlew`, tidak ada `gradle test`). User mem-build APK langsung di GitHub Actions.
+- Verifikasi: cukup pastikan kode kompilasi secara logis (self-review diff) + tulis tes yang benar. Laporkan di report bahwa tes ditulis tapi BELUM dijalankan (reason: build offloaded ke CI).
+- Jangan install dependency baru.
+
 ## Report
 
 Tulis laporan ke `docs/superpowers/sdd/task-1-report.md` (buat folder). Status akhir di reply: DONE / DONE_WITH_CONCERNS / BLOCKED.
