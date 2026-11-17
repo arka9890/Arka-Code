@@ -29,9 +29,43 @@
 4. **Unduhan container gagal di tengah (jaringan putus / cancel)** — folder staging setengah jadi tidak boleh menghancurkan instalasi sebelumnya. → Diuji di Task 4 (install sukses menyisakan rootfs valid + penanda).
 5. **Distro layout Termux (TERMUX_PREFIX) tidak punya `/bin/sh` di root rootfs** — shim `#!/bin/sh` gagal dieksekusi; user Termux tidak bisa pakai container. → Diuji di Task 2 (postInstall Termux membuat `/bin/sh` saat `sh` belum ada di root rootfs).
 
+## Task status (diperbarui Task 7)
+
+Sumber: `git log --oneline`. Checkbox `- [ ]` di bawah **sengaja dibiarkan
+seperti aslinya**: langkah-langkahnya dijalankan sesi subagent dengan
+build/test dialihkan ke GitHub Actions CI (tidak ada `./gradlew` lokal sesuai
+kebijakan user), jadi centang per-langkah akan menyesatkan. Status otoritatif
+= tabel ini + baris **Status** di tiap task.
+
+| Task | Status | Commit kode | Commit laporan |
+|---|---|---|---|
+| 1 — ContainerSpec + ContainerCatalog | selesai | `bab99bd` | `df091c1` |
+| 2 — ContainerRootfs (post-install + appendMuslPath) | selesai | `5a4f3ac` | `94caf77` |
+| 3 — ContainerShim | selesai | `5b85534` | `5e22611` |
+| 4 — ContainerManager | selesai | `a0981d6` | `44cb92b` |
+| *(bukan task)* fix kritis rootfs satu tingkat terlalu dalam | selesai | `b27e5f9` | — |
+| 5 — bind + PATH di tiga argv builder | selesai | `d59b804` | `18aaf2a` |
+| 6 — UI Tool containers + I18n | selesai | `25ac5ff` | `9f78f9c` |
+| 7 — dokumentasi + finalisasi | selesai (dokumentasi saja) | commit dokumentasi ini — `git log -1 --oneline` | `sdd/task-7-report.md` |
+
+Commit Task 7 tidak mencantumkan SHA-nya sendiri di dalam dokumen (mustahil:
+SHA bergantung pada isi dokumen). Ambil dengan
+`git log --oneline -1 -- docs/superpowers/specs/2026-11-17-tool-containers-design.md`;
+pesannya `docs: record phase-1 implementation status for tool containers`.
+
+Yang **belum** dikerjakan dari rencana ini: seluruh langkah pengujian
+end-to-end Task 7 (Step 1–4: pasang lewat app, jalankan di Ubuntu & Alpine,
+persistensi, `pip install` / `npm i -g`) — belum pernah dijalankan di
+perangkat, dan tidak ada build/unit test lokal. Lihat bagian "Implementation
+status (fase 1)" di spec untuk daftar penyimpangan sadar dan risiko yang
+masih terbuka.
+
 ---
 
 ### Task 1: ContainerSpec + ContainerCatalog
+
+**Status:** selesai — kode `bab99bd`, laporan `df091c1`. 7 tes ditulis;
+tidak dijalankan lokal (CI).
 
 **Files:**
 - Create: `android/app/src/main/java/com/arkacode/app/core/ContainerSpec.kt`
@@ -115,6 +149,10 @@ git commit -m "feat(core): add ContainerSpec + ContainerCatalog for tool contain
 
 ### Task 2: postInstall container-rootfs + PATH musl helper
 
+**Status:** selesai — kode `5a4f3ac`, laporan `94caf77`. 13 tes ditulis; tidak
+dijalankan lokal (CI). `ensureShForTermuxLayout` belum punya pemanggil di sini
+— dipanggil dari `DistroManager.postInstall()` di Task 5.
+
 **Files:**
 - Create: `android/app/src/main/java/com/arkacode/app/core/ContainerRootfs.kt` (objek util murni: `ensureContainerLinks`, `appendMuslPath`)
 - Test: `android/app/src/test/java/com/arkacode/app/core/ContainerRootfsTest.kt`
@@ -175,6 +213,9 @@ git commit -m "feat(core): container rootfs post-install helpers + musl path app
 
 ### Task 3: Shim generator
 
+**Status:** selesai — kode `5b85534`, laporan `5e22611`. 3 tes ditulis; tidak
+dijalankan lokal (CI). Penulisan file shim ada di `ContainerManager` (Task 4).
+
 **Files:**
 - Create: `android/app/src/main/java/com/arkacode/app/core/ContainerShim.kt` (objek murni)
 - Test: `android/app/src/test/java/com/arkacode/app/core/ContainerShimTest.kt`
@@ -233,6 +274,14 @@ git commit -m "feat(core): container shim generator (HOME + SSL_CERT_FILE + exec
 ---
 
 ### Task 4: ContainerManager (unduh, ekstrak, instal, status, hapus)
+
+**Status:** selesai — kode `a0981d6`, laporan `44cb92b`, **plus perbaikan
+kritis `b27e5f9`** (rootfs diekstrak ke `<staging>/rootfs`, bukan
+`<staging>/<id>`; tanpa ini `isInstalled()` selalu false). 4 tes ditulis
+(termasuk tes regresi `ROOTFS_SUBDIR`); tidak dijalankan lokal (CI).
+Implementasi akhir menyimpang dari draft kecil di bawah: `remove(spec)` tidak
+punya flag `allowWhileRunning` — gating engine ada di UI (Task 6), sesuai
+spesifikasi "Penyimpangan sadar" #2.
 
 **Files:**
 - Create: `android/app/src/main/java/com/arkacode/app/core/ContainerManager.kt`
@@ -295,6 +344,12 @@ git commit -m "feat(core): ContainerManager — download/extract/install/status/
 ---
 
 ### Task 5: Bind + PATH + ld-musl append di tiga argv builder
+
+**Status:** selesai — kode `d59b804`, laporan `18aaf2a`. 4 tes
+(`ContainerExposureTest`) ditulis; tidak dijalankan lokal (CI). Caveat tes:
+`guestPathValueWithContainers` diuji lewat salinan murni (instance method butuh
+`Context`), bukan instance asli — dicatat di spec bagian "Caveat kualitas
+tes".
 
 **Files:**
 - Modify: `android/app/src/main/java/com/arkacode/app/core/DistroManager.kt` (`buildProotCommand`, `ensureMuslRuntime` — append path)
@@ -359,6 +414,11 @@ git commit -m "feat(core): bind containers + prepend /opt/containers/bin in all 
 
 ### Task 6: UI — seksi Tool containers di DistroScreen + I18n
 
+**Status:** selesai — kode `25ac5ff`, laporan `9f78f9c`. Tidak ada unit test
+UI (pola proyek) dan `assembleDebug` **tidak dijalankan lokal** (CI).
+Keputusan final di Step 2 diikuti: **tanpa auto-restart**, hanya
+`containerRestartHint` + `refresh()`.
+
 **Files:**
 - Modify: `android/app/src/main/java/com/arkacode/app/ui/DistroScreen.kt`
 - Modify: `android/app/src/main/java/com/arkacode/app/ui/I18n.kt`
@@ -396,13 +456,25 @@ git commit -m "feat(ui): Tool containers section in Distro screen"
 
 ### Task 7: Verifikasi end-to-end (manual/instrumentasi) + dokumentasi
 
-- [ ] **Step 1: Pasang container python lewat app** (uji manual di perangkat arm64): Settings → Distro → Tool containers → Pasang. Expected: unduhan ±4 MB, status "terpasang".
-- [ ] **Step 2: Jalankan via AI**: minta AI menjalankan `python3 --version` dan `pip3 --version` di distro **Ubuntu** (glibc) → versi Python 3.20 muncul; ulangi di distro **Alpine** → sama. Expected: kedua distro berhasil.
-- [ ] **Step 3: Uji persistensi**: ganti distro Alpine → Ubuntu → `python3 --version` tetap jalan. Expected: jalan tanpa install ulang.
-- [ ] **Step 4: Uji runtime install**: `pip3 install requests` lalu `python3 -c "import requests; print('ok')"` → ok. `pip3 install --user cowsay` lalu jalankan → jalan (HOME persisten).
-- [ ] **Step 5: Update spec dengan hasil uji** (catat penyimpangan bila ada, mis. format ld-musl path) + commit.
+**Status:** selesai **hanya bagian dokumentasinya** — commit `docs: record
+phase-1 implementation status for tool containers` (SHA: `git log -1
+--oneline`), laporan `sdd/task-7-report.md`. Step 1–4 **belum dijalankan**:
+belum ada perangkat uji,
+jadi hasil uji nyata tidak bisa dicatat. Sebagai gantinya, spec mendapat bagian
+"Implementation status (fase 1)" yang menyatakan eksplisit bahwa fitur **belum
+diuji di perangkat** dan build/unit test **belum dijalankan lokal**.
+
+- [ ] **Step 1: Pasang container python lewat app** (uji manual di perangkat arm64): Settings → Distro → Tool containers → Pasang. Expected: unduhan ±4 MB, status "terpasang". *(belum dijalankan — tidak ada perangkat)*
+- [ ] **Step 2: Jalankan via AI**: minta AI menjalankan `python3 --version` dan `pip3 --version` di distro **Ubuntu** (glibc) → versi Python 3.20 muncul; ulangi di distro **Alpine** → sama. Expected: kedua distro berhasil. *(belum dijalankan)*
+- [ ] **Step 3: Uji persistensi**: ganti distro Alpine → Ubuntu → `python3 --version` tetap jalan. Expected: jalan tanpa install ulang. *(belum dijalankan)*
+- [ ] **Step 4: Uji runtime install**: `pip3 install requests` lalu `python3 -c "import requests; print('ok')"` → ok. `pip3 install --user cowsay` lalu jalankan → jalan (HOME persisten). *(belum dijalankan)*
+- [x] **Step 5: Update spec dengan hasil uji** (catat penyimpangan bila ada, mis. format ld-musl path) + commit. *(dilakukan sebagai catatan status implementasi, bukan hasil uji perangkat)*
 
 ```bash
 git add docs/superpowers/specs/2026-11-17-tool-containers-design.md
-git commit -m "docs: record device test results for tool containers (phase 1)"
+git commit -m "docs: record phase-1 implementation status for tool containers"
 ```
+
+**Next step (fase 1.5):** jalankan Step 1–4 di perangkat arm64 di atas build
+CI, lalu catat hasilnya di spec bagian "Implementation status" dan tutup
+butir-butir "Belum diverifikasi".

@@ -1,8 +1,11 @@
 # Design: Tool Container (isolasi tool lintas distro)
 
 Tanggal: 2026-11-17
-Status: draft v2 — menunggu approval
-Riwayat: v1 → builder check (7 temuan) → v2 (semua temuan sudah diputuskan, lihat "Keputusan setelah builder check").
+Status: **fase 1 terimplementasi, belum diuji di perangkat** — lihat
+"Implementation status (fase 1)".
+Riwayat: v1 → builder check (7 temuan) → v2 (semua temuan sudah diputuskan,
+lihat "Keputusan setelah builder check") → fase 1 diimplementasikan
+(Task 1–6) → status implementasi dicatat (Task 7).
 
 ## Intent / Why
 
@@ -309,13 +312,123 @@ yang menunggu jawaban user lagi):
    `status()` mendeteksi shim hilang dan menulisnya ulang.
 7. **Import offline** — di luar lingkup rilis 1 (catatan di Non-goals).
 
+## Implementation status (fase 1)
+
+Ditulis di Task 7 dan menggambarkan **keadaan kode**, bukan rencana. Fase 1 =
+Task 1–6 rencana (kode) + Task 7 (dokumentasi). Semua klaim di bawah dicek
+langsung ke berkas sumber, bukan dari laporan tugas.
+
+### Yang sudah dibangun
+
+| Berkas | Isi |
+|---|---|
+| `core/ContainerSpec.kt` | `data class ContainerSpec` + `object ContainerCatalog` (PYTHON, NODE). Rootfs = Alpine minirootfs **3.20.3** (branch `v3.20`) per ABI dari `DistroCatalog.CDN` + semua `DistroCatalog.MIRRORS`. `archFor()` memetakan 4 ABI (`aarch64`, `armv7`, `x86_64`, `x86`); `loaderName()` memberi `ld-musl-aarch64.so.1` / `…armhf…` / `…x86_64…` / `…i386…`. `setupScript` = `apk add --no-cache python3 py3-pip ca-certificates` (python) dan `nodejs npm ca-certificates` (node); `releaseMarkers` per tool; `shimBinaries` = `python3,pip3` / `node,npm,npx`. |
+| `core/ContainerRootfs.kt` | `ensureContainerLinks()` (root/workspace, tmp, `/etc/resolv.conf` + `/etc/hosts` sama dengan `DistroManager.postInstall`, chmod ELF/shebang di `bin`, `usr/bin`, `usr/local/bin`), `appendMuslPath()` (fungsi murni, idempoten), `ensureShForTermuxLayout()` (symlink relatif `<rootfs>/bin/sh` → `../<prefix>/bin/sh`). |
+| `core/ContainerShim.kt` | `script(spec, binary, abi)` = 4 baris (`#!/bin/sh`, `export HOME=…`, `export SSL_CERT_FILE=…`, `exec …/usr/bin/<binary> "$@"`); `shimPath()` = `containers/bin/<id>-<binary>` (nama unik antar container). `abi` hanya untuk konsistensi API — isi skrip tidak berbeda per ABI. |
+| `core/ContainerManager.kt` | `install()` (kandidat URL CDN→mirror, unduh + deteksi kompresi dari magic bytes, staging `.staging-<id>` + rename atomik, `ensureContainerLinks`, `setupScript` lewat proot `-r <staging>/rootfs` dengan
+`--kill-on-exit --link2symlink -0 -b /dev -b /proc -b /sys`, timeout 300 s,
+cancellation diteruskan, tulis shim + `home/` + `.installed`), `isInstalled()` (rootfs + semua `releaseMarkers` + semua shim), `sizeLabel()`, `status()`, `remove()`, `guestPath()`, `containerDirName()`, `ROOTFS_SUBDIR`, `containerBindArgs()`. |
+| `core/DistroManager.kt` | bind `containers → /opt/containers` di `buildProotCommand()`; PATH guest memakai `guestPathValueWithContainers()` (`/opt/containers/bin:` di depan), termasuk isi `root/.profile`; `ensureMuslRuntime()` menulis `<rootfs>/etc/ld-musl-<arch>.path` = `MuslRuntime.GUEST_LIB_DIR` + `<container>/usr/lib` untuk tiap container terpasang (idempoten); `postInstall()` memanggil `ensureShForTermuxLayout()` untuk layout Termux; `containerBindArgs()` mendelegasikan ke `ContainerManager` (satu sumber kebenaran). |
+| `core/EngineManager.kt` | bind containers di `baseArgv()` dan `serveArgv()`; `guestEnvTail()` PATH = `/opt/containers/bin:…`; `serveArgv()` PATH = `distro.guestPathValueWithContainers()`. Argumen proot lama tidak berubah. |
+| `ui/DistroScreen.kt` + `ui/I18n.kt` | seksi "Tool containers" (hanya di `RuntimeMode.PROOT`): status terpasang/belum + ukuran nyata, tombol Pasang/Hapus, progress inline, error per kartu, 8 string baru (id + en). |
+
+Unit test yang ditulis: `ContainerSpecTest` (7), `ContainerRootfsTest` (13),
+`ContainerShimTest` (3), `ContainerManagerTest` (4), `ContainerExposureTest`
+(4) — total 31 tes. **Belum ada satu pun yang dijalankan** (lihat bagian
+"Belum diverifikasi").
+
+### Penyimpangan sadar dari desain
+
+1. **Tidak ada auto-restart engine setelah container dipasang.** Draf v1
+   menyebut restart otomatis; Keputusan #3 memilih hint saja. Implementasi:
+   `installContainer()` menampilkan `containerRestartHint` ("Restart engine
+   (Stop → Start) …") dan **tidak** memanggil `engine.stopServer()` /
+   `startServer()`. Bind containers berlaku untuk perintah berikutnya; PATH
+   server (`serveArgv`) baru berlaku setelah user me-restart manual. Alasan:
+   restart di tengah sesi AI dianggap mengagetkan user, dan tombol Stop→Start
+   sudah ada di layar Engine.
+2. **Gating hapus hanya di UI.** `ContainerManager.remove()` **tidak**
+   memeriksa `engine.isRunning()` (tertulis di KDoc-nya); yang menahan adalah
+   tombol Hapus di `DistroScreen` (`enabled = !engine.isRunning()`) plus
+   keterangan `containerRemoveBusy`. Konsekuensi: pemanggil lain di masa
+   depan tidak otomatis terlindungi dan harus mengulang pemeriksaan itu.
+3. **Import offline (SAF) di luar rilis 1** — hanya URL. Belum ada
+   `installFromStream` versi container.
+4. **`ContainerManager.status()`** masih memakai string Indonesia hardcoded
+   (`"terpasang"` / `"belum terpasang"`) dan saat ini tidak dipanggil UI (UI
+   memakai `isInstalled()` + string I18n). Sisa kecil: kandidat dihapus atau
+   di-I18n-kan.
+
+### Belum diverifikasi (baca sebelum menganggap fitur jalan)
+
+- **Tidak ada pengujian di perangkat nyata.** Belum pernah ada container
+  yang benar-benar dipasang/dijalankan di arm64 maupun ABI lain: uji manual
+  `python3 --version`, `pip install`, `pip install --user`, `npm i -g`, dan
+  persistensi setelah ganti distro (Task 7 Step 1–4 rencana) **belum
+  dijalankan**.
+- **Tidak ada build/gradle lokal.** Kebijakan user: APK dibangun di GitHub
+  Actions CI. Semua kompilasi + unit test fase 1 diverifikasi statis saja
+  (baca diff, hitung keseimbangan kurung, grep nama field). Kegagalan
+  kompilasi pertama akan muncul di CI.
+- **Format `ld-musl-<arch>.path` multi-path** belum diverifikasi di
+  perangkat (risiko yang sudah tercatat di atas). Implementasi hanya
+  menambahkan `<container>/rootfs/usr/lib` per container — bukan juga
+  `<container>/rootfs/lib`. Bila loader tidak membaca format banyak path,
+  fallback loader eksplisit (`ld-musl --library-path … --argv0 …`) di
+  Mekanisme #2 belum ditulis.
+- **`/bin/sh` layout Termux** — `ensureShForTermuxLayout()` sudah dipanggil
+  dari `postInstall`, tetapi symlink relatifnya belum pernah dieksekusi di
+  device Termux.
+- **Shadowing library musl** (distro vs container) belum diukur di perangkat;
+  desain hanya mengandalkan Alpine 3.20.3 di kedua sisi.
+- **Cancellation/progress UI** belum terlihat berjalan (tidak ada tombol
+  Batal khusus container; pembatalan hanya terjadi bila layar ditinggal).
+
+### Risiko yang sudah terselesaikan
+
+- **Bug kritis: rootfs diekstrak satu tingkat terlalu dalam** — ditemukan
+  saat review Task 4/5, diperbaiki di commit `b27e5f9`. `install()`
+  mengekstrak isi arsip ke `containers/.staging-<id>/<id>` lalu me-rename
+  folder itu menjadi `containers/<id>`, sehingga rootfs mendarat di
+  `containers/<id>/<id>/rootfs`: `isInstalled()` akan **selalu false** dan
+  shim menunjuk path yang tidak ada — fitur tidak akan pernah jalan walau
+  unduhan sukses. Perbaikan: ekstrak ke `<staging>/rootfs` (konstanta
+  `ROOTFS_SUBDIR`), `rootfsDirName` → `containerDirName` dengan KDoc, dan
+  tes regresi di `ContainerManagerTest` yang mengunci kesamaan
+  `<id>/rootfs` versi host dengan `guestPath(id)`. Tes lama juga mustahil
+  lulus (membandingkan `"python"` dengan `"rootfs"`), jadi bug ini tidak
+  mungkin tertangkap tes yang ada saat itu.
+
+### Caveat kualitas tes
+
+- `ContainerExposureTest` **tidak memanggil**
+  `DistroManager.guestPathValueWithContainers()` yang asli (instance method
+  butuh `Context` nyata); tes memakai salinan murni dari komposisi PATH yang
+  sama. Tes mengunci *bentuk* string, bukan perilaku instance — kalau
+  implementasi berubah tanpa mengubah salinannya, tes tetap hijau.
+- `ContainerManagerTest` hanya menguji fungsi murni companion (`guestPath`,
+  `containerDirName`, `ROOTFS_SUBDIR`, `containerBindArgs`). Alur
+  `install()` / `remove()` / `isInstalled()` (filesystem, jaringan, proot)
+  tidak punya tes otomatis; verifikasinya bergantung sepenuhnya pada uji
+  perangkat.
+
 ## What's left to the builder
 
-- Penulisan skrip instal per container dan urutan langkah pasti
-  `install()` (timeout, progress steps, urutan restart engine).
-- Verifikasi format `ld-musl-<arch>.path` multi-path di perangkat dan
-  fallbacknya bila perlu.
-- Penentuan penanganan `/bin/sh` untuk layout Termux (opsi di Risiko).
-- Detail UI (komponen Compose, layout kartu).
-- Pengetesan nyata di perangkat (arm64) untuk python & node, termasuk
-  `pip install` runtime dan `npm i -g`.
+Diperbarui di Task 7 — status per butir:
+
+- ~~Skrip instal per container dan urutan langkah pasti `install()`
+  (timeout, progress steps, urutan restart engine)~~ — **selesai** (Task 4;
+  lihat Implementation status). Restart engine diputuskan **tidak**
+  otomatis (Keputusan #3).
+- ~~Penentuan penanganan `/bin/sh` untuk layout Termux~~ — **selesai**
+  (`ContainerRootfs.ensureShForTermuxLayout`, dipanggil dari `postInstall`),
+  **belum diuji di device Termux**.
+- ~~Detail UI (komponen Compose, layout kartu)~~ — **selesai** (Task 6).
+- **Masih terbuka:** verifikasi format `ld-musl-<arch>.path` multi-path di
+  perangkat + fallback loader eksplisit bila format tidak didukung.
+- **Masih terbuka (paling penting):** pengetesan nyata di perangkat (arm64)
+  untuk python & node — `python3 --version`, `pip install`, `pip install
+  --user`, `npm i -g` — di distro glibc (Ubuntu) dan musl (Alpine), plus
+  persistensi setelah ganti distro.
+- **Masih terbuka:** build + unit test pertama di GitHub Actions CI (tidak
+  pernah dijalankan lokal sesuai kebijakan user).
