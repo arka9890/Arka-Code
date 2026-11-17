@@ -102,7 +102,7 @@ class DistroManager(
         )
 
         /** Daftar ABI yang binary proot-nya benar-benar dibundel. */
-        val SUPPORTED_ABIS = Build.SUPPORTED_ABIS.toList()
+        private val SUPPORTED_ABIS: List<String> by lazy { Build.SUPPORTED_ABIS.toList() }
 
         /**
          * Argumen bind proot yang membuat folder containers host terlihat di
