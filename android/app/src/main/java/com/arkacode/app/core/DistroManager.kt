@@ -114,6 +114,29 @@ class DistroManager(
          */
         fun containerBindArgs(containersDir: String): List<String> =
             ContainerManager.containerBindArgs(containersDir)
+
+        /**
+         * Apakah [path] (absolut di dalam guest) ada di [rootfs]?
+         *
+         * `File.exists()` tidak bisa dipakai langsung: Alpine menaruh `bin/sh`
+         * sebagai symlink ABSOLUT `-> /bin/busybox`, dan `exists()` mengikutinya
+         * ke path HOST (`/bin/busybox` tidak ada) sehingga file yang ada
+         * dianggap hilang. Symlink dibaca manual dan targetnya di-resolve di
+         * dalam rootfs; symlink relatif di-resolve terhadap folder induknya.
+         */
+        internal fun existsInRootfs(rootfs: File, path: String, depth: Int = 0): Boolean {
+            if (depth > 8) return false
+            val file = File(rootfs, path.trimStart('/'))
+            if (file.exists()) return true
+            val link = runCatching { java.nio.file.Files.readSymbolicLink(file.toPath()).toString() }
+                .getOrNull() ?: return false
+            val resolved = if (link.startsWith("/")) {
+                link
+            } else {
+                path.substringBeforeLast('/', "") + "/" + link
+            }
+            return existsInRootfs(rootfs, resolved, depth + 1)
+        }
     }
 
     private val distroRoot = File(context.filesDir, "distro").apply { mkdirs() }
@@ -840,13 +863,16 @@ class DistroManager(
         else -> "/usr/bin"
     }
 
+    /** Apakah [path] (absolut di guest) ada di rootfs distro ini — lihat [existsInRootfs]. */
+    private fun guestExists(path: String): Boolean = existsInRootfs(rootfsDir, path)
+
     /** Path absolut di dalam guest untuk binary bernama [name], null kalau tidak ada. */
     fun guestBinary(name: String): String? {
         val candidates = when {
             spec.extractDir.isNotEmpty() -> listOf("${spec.guestPrefix}/bin/$name", "/usr/bin/$name", "/bin/$name")
             else -> listOf("/usr/bin/$name", "/bin/$name")
         }
-        return candidates.firstOrNull { File(rootfsDir, it.trimStart('/')).exists() }
+        return candidates.firstOrNull { guestExists(it) }
     }
 
     /** PATH di dalam guest (bin distro didahulukan). */
@@ -870,9 +896,10 @@ class DistroManager(
     /** Path `env` di dalam guest — dipakai untuk membersihkan environment. */
     fun guestEnvPath(): String = guestBinary("env") ?: "${guestBinDir()}/env"
 
-    /** Path shell di dalam guest. */
+    /** Path shell di dalam guest. Fallback terakhir `/bin/sh` (jalur busybox). */
     fun guestShellPath(): String =
-        guestBinary("sh") ?: guestBinary("bash") ?: "${guestBinDir()}/sh"
+        guestBinary("sh") ?: guestBinary("bash")
+            ?: if (spec.extractDir.isNotEmpty()) "${spec.guestPrefix}/bin/sh" else "/bin/sh"
 
     /** Path HOME di dalam guest (Termux memakai `$PREFIX/home`). */
     fun guestHomePath(): String =

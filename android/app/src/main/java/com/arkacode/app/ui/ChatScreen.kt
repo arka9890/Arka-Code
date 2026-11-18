@@ -919,7 +919,7 @@ private fun AssistantBubble(item: ChatItem.Assistant) {
                     var showThinking by remember { mutableStateOf(false) }
                     TextButton(onClick = { showThinking = !showThinking }) {
                         Text(
-                            if (showThinking) I18n.s.showThinking else I18n.s.thinkingCount(item.reasonings.size),
+                            if (showThinking) I18n.s.hideThinking else I18n.s.thinkingCount(item.reasonings.size),
                             style = MaterialTheme.typography.labelSmall,
                         )
                     }

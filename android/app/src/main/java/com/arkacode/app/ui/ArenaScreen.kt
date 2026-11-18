@@ -94,7 +94,7 @@ object ArenaLauncher {
 
         runCatching { context.startActivity(Intent(context, ArenaScreenActivity::class.java)) }
             .onFailure {
-                Toast.makeText(context, "Tidak ada browser terpasang", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, I18n.s.arenaNoBrowser, Toast.LENGTH_LONG).show()
             }
     }
 }
@@ -197,7 +197,7 @@ fun ArenaWebView(onClose: () -> Unit) {
                 ) {
                     if (request.isForMainFrame) {
                         loading = false
-                        error = "Gagal memuat Arena AI: ${errorRes.description}"
+                        error = I18n.s.arenaLoadError(errorRes.description.toString())
                     }
                 }
 
@@ -208,7 +208,7 @@ fun ArenaWebView(onClose: () -> Unit) {
                 ) {
                     if (request.isForMainFrame) {
                         loading = false
-                        error = "Server Arena AI membalas HTTP ${errorResponse.statusCode}"
+                        error = I18n.s.arenaHttpError(errorResponse.statusCode)
                     }
                 }
 
@@ -216,7 +216,7 @@ fun ArenaWebView(onClose: () -> Unit) {
                     view: WebView,
                     detail: RenderProcessGoneDetail
                 ): Boolean {
-                    error = "Proses tampilan WebView berhenti. Tekan Coba lagi."
+                    error = I18n.s.arenaRenderGone
                     loading = false
                     return true
                 }
@@ -252,19 +252,19 @@ fun ArenaWebView(onClose: () -> Unit) {
                     // dipakai: Android 8–10 menolak membaca /Download tanpa izin
                     // penyimpanan eksternal, dan jalurnya butuh impor manual.
                     scope.launch {
-                        Toast.makeText(context, "Mengunduh: $fileName", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, I18n.s.arenaDownloading(fileName), Toast.LENGTH_SHORT).show()
                         runCatching { ArenaImport.saveToWorkspace(context, url, fileName) }
                             .onSuccess {
                                 Toast.makeText(
                                     context,
-                                    "Tersimpan ke workspace: ${it.name}",
+                                    I18n.s.arenaSaved(it.name),
                                     Toast.LENGTH_LONG
                                 ).show()
                             }
                             .onFailure {
                                 Toast.makeText(
                                     context,
-                                    "Gagal mengunduh $fileName: ${it.message}",
+                                    I18n.s.arenaDownloadFailed(fileName, it.message ?: ""),
                                     Toast.LENGTH_LONG
                                 ).show()
                             }
@@ -284,7 +284,7 @@ fun ArenaWebView(onClose: () -> Unit) {
                     IconButton(onClick = onClose) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Kembali"
+                            contentDescription = I18n.s.back
                         )
                     }
                 },
@@ -296,7 +296,7 @@ fun ArenaWebView(onClose: () -> Unit) {
                             webView.reload()
                         }
                     ) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Muat ulang")
+                        Icon(Icons.Default.Refresh, contentDescription = I18n.s.arenaReload)
                     }
                 }
             )
@@ -333,7 +333,7 @@ fun ArenaWebView(onClose: () -> Unit) {
                         },
                         modifier = Modifier.padding(top = 16.dp)
                     ) {
-                        Text("Coba lagi")
+                        Text(I18n.s.arenaRetry)
                     }
                     OutlinedButton(
                         onClick = {
@@ -344,7 +344,7 @@ fun ArenaWebView(onClose: () -> Unit) {
                             }.onFailure {
                                 Toast.makeText(
                                     context,
-                                    "Tidak ada browser terpasang",
+                                    I18n.s.arenaNoBrowser,
                                     Toast.LENGTH_SHORT
                                 ).show()
                             }
@@ -352,7 +352,7 @@ fun ArenaWebView(onClose: () -> Unit) {
                         modifier = Modifier.padding(top = 8.dp)
                     ) {
                         Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null)
-                        Text("Buka di browser", modifier = Modifier.padding(start = 8.dp))
+                        Text(I18n.s.arenaOpenInBrowser, modifier = Modifier.padding(start = 8.dp))
                     }
                 }
             } else {

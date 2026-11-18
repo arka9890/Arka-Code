@@ -385,7 +385,7 @@ fun DistroScreen(
         containerErrors = containerErrors - spec.id
         scope.launch {
             try {
-                val result = withContext(Dispatchers.IO) { containerManager.remove(spec) }
+                val result = withContext(Dispatchers.IO) { containerManager.remove(spec, engine.isRunning()) }
                 val error = result.exceptionOrNull()
                 if (error != null) {
                     containerErrors = containerErrors +
@@ -745,7 +745,7 @@ fun DistroScreen(
                                             // Kalau mau diperbarui, hapus dulu.
                                             TextButton(
                                                 onClick = { install(spec) },
-                                                enabled = prootReady && supported,
+                                                enabled = prootReady && supported && !engine.isRunning(),
                                             ) { Text(I18n.s.distroReinstall) }
                                             TextButton(
                                                 onClick = {
@@ -758,7 +758,7 @@ fun DistroScreen(
                                                         refresh()
                                                     }
                                                 },
-                                                enabled = !isRemoving,
+                                                enabled = !isRemoving && !engine.isRunning(),
                                             ) { Text(I18n.s.distroRemove) }
                                         } else {
                                             TextButton(
