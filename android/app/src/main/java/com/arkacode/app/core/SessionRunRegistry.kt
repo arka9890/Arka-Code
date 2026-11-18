@@ -66,29 +66,6 @@ class SessionRunRegistry(
         scope.launch { loadSession(sessionId) }
     }
 
-    /**
-     * Pastikan `messages` terisi sebelum giliran baru dikirim.
-     *
-     * [send] mengambil snapshot `preIds` dari `messages`. Kalau masih kosong,
-     * polling akan menganggap assistant LAMA sebagai balasan giliran ini, jadi
-     * Buddy akan mengulang jawaban sebelumnya. Maka muat dulu bila belum ada —
-     * termasuk ketika `attach` asinkron masih berjalan di latar belakang untuk
-     * sesi yang sama.
-     */
-    suspend fun attachNow(sessionId: String) {
-        val r = run(sessionId)
-        ensureEvents()
-        if (r.attached) {
-            if (r.messages.value.isEmpty()) {
-                runCatching { client.listMessages(sessionId) }
-                    .getOrNull()?.let { r.messages.value = it }
-            }
-            return
-        }
-        r.attached = true
-        loadSession(sessionId)
-    }
-
     private suspend fun loadSession(sessionId: String) {
         val r = run(sessionId)
         runCatching { client.listMessages(sessionId) }.getOrNull()?.let { r.messages.value = it }
@@ -211,10 +188,17 @@ class SessionRunRegistry(
         // ini harus berupa assistant BARU, jangan sampai assistant lama yang belum
         // ber-"finish" dianggap balasan → pollUntilDone langsung break → busy
         // cepat false, echo hilang, padahal turn masih jalan di server.
-        r.preIds = r.messages.value.mapTo(mutableSetOf()) { it.id }
+        // Snapshot diambil di dalam coroutine setelah memuat pesan: `attach` async
+        // bisa belum selesai saat user mengirim, dan snapshot dari daftar kosong
+        // membuat assistant LAMA dianggap balasan giliran ini.
         r.pollJob?.cancel()
         r.pollJob = scope.launch {
             try {
+                if (r.messages.value.isEmpty()) {
+                    runCatching { client.listMessages(sessionId) }.getOrNull()
+                        ?.let { r.messages.value = it }
+                }
+                r.preIds = r.messages.value.mapTo(mutableSetOf()) { it.id }
                 model?.let { m -> runCatching { client.switchModel(sessionId, m.providerID, m.id) } }
                 client.sendPrompt(sessionId, trimmed, files)
             } catch (e: CancellationException) {

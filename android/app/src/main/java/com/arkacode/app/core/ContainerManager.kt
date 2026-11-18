@@ -314,11 +314,12 @@ class ContainerManager(
     /**
      * Hapus container: folder `containers/<id>`, staging, dan semua shim.
      *
-     * TIDAK memeriksa engine — gating ada di UI (Task 6): tombol Hapus
-     * dinonaktifkan saat `engine.isRunning()` karena shim yang sedang dipakai
-     * sesi aktif akan menggantung.
+     * [engineRunning] wajib diisi pemanggil: shim yang sedang dipakai sesi aktif
+     * akan menggantung kalau rootfs-nya dihapus di bawah proot. Guard ada di sini
+     * (bukan hanya di UI) supaya pemanggil lain tidak bisa melewatinya.
      */
-    fun remove(spec: ContainerSpec): Result<Unit> = try {
+    fun remove(spec: ContainerSpec, engineRunning: Boolean): Result<Unit> = try {
+        if (engineRunning) throw IllegalStateException("Hentikan engine dulu sebelum menghapus container.")
         runCatching { File(containersDir(), spec.id).deleteRecursively() }
         runCatching { stagingRoot(spec).deleteRecursively() }
         spec.shimBinaries.forEach { binary ->

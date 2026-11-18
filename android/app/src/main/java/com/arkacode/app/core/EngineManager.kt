@@ -688,20 +688,24 @@ class EngineManager(private val context: Context) {
     /**
      * Cari proses `opencode serve` milik app ini di `/proc` yang bukan child kita
      * (sisa server yang tetap hidup setelah app di-restart / ganti binary), lalu
-     * kirim SIGTERM. Aman: hanya cocok untuk cmdline yang memuat "opencode",
-     * "serve", dan "--port"; proses lain (termasuk app) tak terpengaruh.
+     * kirim SIGTERM. Filter UID wajib: cmdline saja tidak membuktikan proses itu
+     * milik app ini — server opencode dari Termux / app lain akan ikut terbunuh.
      */
     private fun reapStrayServers() {
         val me = android.os.Process.myPid()
+        val myUid = android.os.Process.myUid()
         val stray = mutableListOf<Int>()
         File("/proc").listFiles()?.forEach { d ->
             val pid = d.name.toIntOrNull() ?: return@forEach
             if (pid == me) return@forEach
             val cmd = runCatching { File(d, "cmdline").readBytes().toString(Charsets.UTF_8) }
                 .getOrNull() ?: return@forEach
-            if (cmd.contains("opencode") && cmd.contains("serve") && cmd.contains("--port")) {
-                stray.add(pid)
-            }
+            if (!cmd.contains("opencode") || !cmd.contains("serve") || !cmd.contains("--port")) return@forEach
+            // Pemilik: UID app ini. Kalau `status` tak terbaca (hidepid), jatuh ke
+            // pencocokan path app — cmdline proses kita memuat filesDir/package.
+            val uid = runCatching { procUid(d) }.getOrNull()
+            val mine = if (uid != null) uid == myUid else cmd.contains(context.packageName)
+            if (mine) stray.add(pid)
         }
         if (stray.isEmpty()) return
         stray.forEach { runCatching { android.os.Process.sendSignal(it, 15) } }
@@ -710,6 +714,13 @@ class EngineManager(private val context: Context) {
         runCatching { Thread.sleep(600) }
         stray.forEach { runCatching { android.os.Process.sendSignal(it, 9) } }
     }
+
+    /** UID pemilik proses dari baris `Uid:` di `/proc/<pid>/status`. */
+    private fun procUid(dir: File): Int? =
+        File(dir, "status").useLines { lines ->
+            lines.firstOrNull { it.startsWith("Uid:") }
+                ?.removePrefix("Uid:")?.trim()?.split(Regex("\\s+"))?.firstOrNull()?.toIntOrNull()
+        }
 
     /**
      * Uji eksekusi proot terisolasi (tanpa opencode): echo + arsitektur +

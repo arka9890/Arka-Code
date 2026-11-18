@@ -140,9 +140,16 @@ class OpenCodeClient(
         ServerHealth(healthy = true, version = version)
     }
 
+    /**
+     * Encode path relatif per segmen untuk dipakai di PATHNAME (bukan query).
+     *
+     * `URLEncoder` memakai aturan form (`+` = spasi), sedangkan server
+     * men-decode pathname dengan `decodeURIComponent` yang membiarkan `+`
+     * sebagai karakter biasa. Spasi harus dikirim sebagai `%20`.
+     */
     private fun encodeRelPath(path: String): String =
         path.split("/").filter { it.isNotEmpty() }
-            .joinToString("/") { java.net.URLEncoder.encode(it, "UTF-8") }
+            .joinToString("/") { java.net.URLEncoder.encode(it, "UTF-8").replace("+", "%20") }
 
     /** Daftar isi satu direktori ("" = root working dir server). */
     suspend fun listFiles(path: String = ""): List<FsEntry> = withContext(Dispatchers.IO) {
@@ -432,7 +439,13 @@ class OpenCodeClient(
         }
     }
 
-    /** Kirim pesan (async di server — return saat admit, bukan saat selesai). */
+    /**
+     * Kirim pesan (async di server — return saat admit, bukan saat selesai).
+     *
+     * Mengembalikan id pesan yang di-admit. Server v2 selalu menyertakannya
+     * (`{data: SessionInbox.User}`); kalau tidak ada, respons tidak sah dan
+     * pemanggil HARUS gagal cepat — bukan menunggu balasan yang tak akan datang.
+     */
     suspend fun sendPrompt(
         sessionId: String,
         text: String,
@@ -452,7 +465,8 @@ class OpenCodeClient(
         }
         val el = call(postReq("/api/session/$sessionId/prompt", body.toString()))
         val o = (el as? JsonObject)?.obj("data") ?: JsonObject(emptyMap())
-        o.str("id") ?: ""
+        o.str("id")?.takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException("Server tidak mengembalikan id pesan — kirim ulang.")
     }
 
     /** Tunggu loop agent idle (long-poll; cancel = Stop). v2: prefix `/api/experimental`. */
