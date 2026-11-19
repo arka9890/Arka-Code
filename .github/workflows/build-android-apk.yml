@@ -22,6 +22,18 @@ jobs:
       - name: Set up Gradle (with cache)
         uses: gradle/actions/setup-gradle@v4
 
+      # Modul native pty (src/main/cpp) butuh NDK + CMake persis versi yang
+      # dikunci di build.gradle.kts. Runner default sudah punya, tapi dipasang
+      # eksplisit supaya build tetap stabil walau image runner berganti.
+      - name: Install NDK & CMake
+        run: |
+          CMD="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          if [ -x "$CMD" ]; then
+            yes | "$CMD" --install "ndk;27.0.12077973" "cmake;3.22.1" >/dev/null 2>&1 || true
+          fi
+          ls "$ANDROID_HOME/ndk/" 2>/dev/null || echo "tidak ada NDK"
+          ls "$ANDROID_HOME/cmake/" 2>/dev/null || echo "tidak ada CMake"
+
       # Installer TTS engine (~148 MB) diunduh saat build. Disimpan di cache
       # supaya tidak diunduh ulang tiap run; kunci berubah kalau versi engine
       # di buildSrc berubah.
