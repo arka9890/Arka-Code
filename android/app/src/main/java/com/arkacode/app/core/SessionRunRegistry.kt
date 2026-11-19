@@ -2,6 +2,7 @@ package com.arkacode.app.core
 
 import android.content.Context
 import androidx.compose.runtime.mutableStateOf
+import com.arkacode.app.net.ChatFile
 import com.arkacode.app.net.ChatItem
 import com.arkacode.app.net.ModelRef
 import com.arkacode.app.net.OpenCodeClient
@@ -11,11 +12,29 @@ import com.arkacode.app.net.ServerEvent
 import com.arkacode.app.net.ToolUse
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/**
+ * Tempelkan berkas hasil giliran ke tiap pesan asisten.
+ *
+ * Berkas dari part `file` server sudah menempel di [ChatItem.Assistant.files];
+ * yang ditambahkan [extra] adalah berkas hasil diff folder sesi (dibaca dari
+ * [TurnFileStore]). Digabung tanpa duplikat path.
+ */
+internal fun mergeTurnFiles(
+    items: List<ChatItem>,
+    extra: (String) -> List<ChatFile>,
+): List<ChatItem> = items.map { item ->
+    if (item !is ChatItem.Assistant) item
+    else item.copy(files = (item.files + extra(item.id)).distinctBy { it.path })
+}
 
 /**
  * Status "turn berjalan" untuk SATU sesi. Dimiliki [SessionRunRegistry] yang
@@ -38,6 +57,8 @@ class SessionRun {
 
     internal var pollJob: Job? = null
     internal var preIds: Set<String> = emptySet()
+    /** Snapshot folder sesi sebelum giliran dikirim (dasar diff berkas hasil). */
+    internal var preFiles: Map<String, TurnStamp>? = null
     internal var attached = false
 }
 
@@ -68,7 +89,7 @@ class SessionRunRegistry(
 
     private suspend fun loadSession(sessionId: String) {
         val r = run(sessionId)
-        runCatching { client.listMessages(sessionId) }.getOrNull()?.let { r.messages.value = it }
+        runCatching { client.listMessages(sessionId) }.getOrNull()?.let { setMessages(r, sessionId, it) }
         runCatching { client.listPermissions(sessionId) }.getOrNull()?.let { r.pending.value = it }
         runCatching { client.listQuestions(sessionId) }.getOrNull()?.let { r.questions.value = it }
         val active = runCatching { client.sessionActive() }.getOrDefault(emptySet())
@@ -81,9 +102,50 @@ class SessionRunRegistry(
     fun refresh(sessionId: String) {
         val r = run(sessionId)
         scope.launch {
-            runCatching { client.listMessages(sessionId) }.getOrNull()?.let { r.messages.value = it }
+            runCatching { client.listMessages(sessionId) }.getOrNull()?.let { setMessages(r, sessionId, it) }
             runCatching { client.listPermissions(sessionId) }.getOrNull()?.let { r.pending.value = it }
             runCatching { client.listQuestions(sessionId) }.getOrNull()?.let { r.questions.value = it }
+        }
+    }
+
+    /**
+     * Pasang daftar berkas hasil giliran ke pesan asisten sebelum masuk state.
+     *
+     * Membaca store dan mengecek keberadaan berkas adalah I/O, jadi dijalankan
+     * di `Dispatchers.IO`: jalur ini dilewati setiap putaran polling, dan
+     * melakukannya di main thread bikin daftar pesan tersendat.
+     */
+    private suspend fun setMessages(r: SessionRun, sessionId: String, list: List<ChatItem>) {
+        val merged = withContext(Dispatchers.IO) {
+            val root = VirtualFs(context).workspaceDir(sessionId)
+            val store = TurnFileStore.of(context)
+            mergeTurnFiles(list) { id -> store.files(id, root) }
+        }
+        r.messages.value = merged
+    }
+
+    /**
+     * Catat berkas yang lahir selama giliran terakhir sesi ini.
+     *
+     * Sengaja di bawah `NonCancellable`: tombol Stop membatalkan coroutine
+     * polling, tapi berkas yang sudah terlanjur dibuat di disk tetap harus bisa
+     * diambil dari chat.
+     */
+    private suspend fun recordTurnFiles(sessionId: String) {
+        val r = run(sessionId)
+        val before = r.preFiles ?: return
+        r.preFiles = null
+        val changed = withContext(NonCancellable + Dispatchers.IO) {
+            TurnFiles.changed(context, sessionId, before)
+        }
+        if (changed.isEmpty()) return
+        val target = r.messages.value
+            .filterIsInstance<ChatItem.Assistant>()
+            .lastOrNull { it.id !in r.preIds }
+            ?: r.messages.value.filterIsInstance<ChatItem.Assistant>().lastOrNull()
+            ?: return
+        withContext(NonCancellable + Dispatchers.IO) {
+            TurnFileStore.of(context).save(target.id, changed.map { it.path })
         }
     }
 
@@ -196,9 +258,12 @@ class SessionRunRegistry(
             try {
                 if (r.messages.value.isEmpty()) {
                     runCatching { client.listMessages(sessionId) }.getOrNull()
-                        ?.let { r.messages.value = it }
+                        ?.let { setMessages(r, sessionId, it) }
                 }
                 r.preIds = r.messages.value.mapTo(mutableSetOf()) { it.id }
+                // Snapshot folder sesi SEBELUM prompt masuk: diff-nya yang
+                // menentukan kartu berkas di bubble jawaban giliran ini.
+                r.preFiles = withContext(Dispatchers.IO) { TurnFiles.snapshot(context, sessionId) }
                 model?.let { m -> runCatching { client.switchModel(sessionId, m.providerID, m.id) } }
                 client.sendPrompt(sessionId, trimmed, files)
             } catch (e: CancellationException) {
@@ -226,7 +291,7 @@ class SessionRunRegistry(
         r.justSent.value = null
         scope.launch {
             runCatching { client.interrupt(sessionId) }
-            runCatching { client.listMessages(sessionId) }.getOrNull()?.let { r.messages.value = it }
+            runCatching { client.listMessages(sessionId) }.getOrNull()?.let { setMessages(r, sessionId, it) }
         }
     }
 
@@ -234,7 +299,17 @@ class SessionRunRegistry(
         val r = run(sessionId)
         if (r.pollJob?.isActive == true) return
         r.preIds = snapshotPreIds(r.messages.value)
-        r.pollJob = scope.launch { pollUntilDone(sessionId) }
+        // Sesi bisa sudah menjalankan turn sebelum app dibuka: snapshot diambil
+        // di sini supaya berkas yang dibuat SETELAH app terbuka tetap terlihat.
+        // Dijalankan di IO karena walk direktori bukan operasi main thread.
+        r.pollJob = scope.launch {
+            if (r.preFiles == null) {
+                r.preFiles = withContext(Dispatchers.IO) {
+                    runCatching { TurnFiles.snapshot(context, sessionId) }.getOrNull()
+                }
+            }
+            pollUntilDone(sessionId)
+        }
     }
 
     private suspend fun pollUntilDone(sessionId: String) {
@@ -253,7 +328,7 @@ class SessionRunRegistry(
                     null
                 }
                 if (loaded != null) {
-                    r.messages.value = loaded
+                    setMessages(r, sessionId, loaded)
                     fetchFails = 0
                 } else if (++fetchFails >= MAX_FETCH_FAILS) {
                     r.error.value = lastErr ?: "Tidak dapat memuat pesan dari server"
@@ -272,7 +347,7 @@ class SessionRunRegistry(
                     while (settle < SETTLE_TRIES && !hasBody(asst)) {
                         delay(SETTLE_MS)
                         runCatching { client.listMessages(sessionId) }.getOrNull()
-                            ?.let { r.messages.value = it }
+                            ?.let { setMessages(r, sessionId, it) }
                         asst = r.messages.value
                             .filterIsInstance<ChatItem.Assistant>()
                             .lastOrNull { it.id !in r.preIds } ?: asst
@@ -294,7 +369,11 @@ class SessionRunRegistry(
             r.liveTools.value = emptyList()
             // liveText sengaja TIDAK dibersihkan di sini: ChatScreen memakainya
             // sebagai cadangan bila pesan tersimpan tak memuat teks balasan.
-            runCatching { client.listMessages(sessionId) }.getOrNull()?.let { r.messages.value = it }
+            // Catat berkas turn lebih dulu: kalau coroutine sudah dibatalkan
+            // (tombol Stop), pemanggilan fetch di bawah langsung melempar
+            // CancellationException dan langkah ini tak akan pernah jalan.
+            recordTurnFiles(sessionId)
+            runCatching { client.listMessages(sessionId) }.getOrNull()?.let { setMessages(r, sessionId, it) }
         }
     }
 
