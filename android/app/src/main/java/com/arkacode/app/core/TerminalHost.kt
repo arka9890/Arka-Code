@@ -86,19 +86,24 @@ object TerminalHost {
     /**
      * Buka shell untuk [distro]. `true` bila sesi sudah/berhasil jalan,
      * `false` bila distro belum terpasang atau runtime bukan proot.
+     *
+     * Resolusi argv menyentuh filesystem (symlink binary proot, isi rootfs),
+     * jadi dikerjakan SEBELUM mengambil kunci: pemanggil dari main thread
+     * tidak boleh ikut menunggu I/O.
      */
-    fun open(distro: DistroManager, workspaceDir: File?, containersDir: File): Boolean =
-        synchronized(lock) {
-            val rootfs = distro.rootfsDir.absolutePath
+    fun open(distro: DistroManager, workspaceDir: File?, containersDir: File): Boolean {
+        val rootfs = distro.rootfsDir.absolutePath
+        val argv = TerminalCommand.forDistro(distro, workspaceDir, containersDir)
+        val cwd = workspaceDir?.absolutePath ?: distro.rootfsDir.absolutePath
+        return synchronized(lock) {
             val current = session
             if (current != null && activeRootfs == rootfs && _state.value !is TerminalState.Exited) {
                 return true
             }
+            if (argv == null) return false
             if (current != null) stopLocked()
-            val argv = TerminalCommand.forDistro(distro, workspaceDir, containersDir) ?: return false
             // cwd proses induk (host), bukan cwd guest: proot sendiri yang
             // memindahkan shell ke `-w <guestHomePath>` di argv.
-            val cwd = workspaceDir?.absolutePath ?: distro.rootfsDir.absolutePath
             generation++
             val gen = generation
             // Offset sesi baru mulai dari nol lagi, jadi penanda replay lama
@@ -139,6 +144,7 @@ object TerminalHost {
             }
             true
         }
+    }
 
     /**
      * Layar terminal dipasang kembali (mutasi komposisi / rotasi).
@@ -157,8 +163,13 @@ object TerminalHost {
         snapshot
     }
 
-    /** Ada sesi hidup (dipakai layar terminal setelah proses dipulihkan). */
-    fun hasSession(): Boolean = synchronized(lock) { session != null }
+    /**
+     * Ada sesi, atau `open()` sudah pernah dipanggil di proses ini. Dipakai
+     * layar terminal untuk membedakan "rotasi saat pty sedang disiapkan"
+     * (harus tetap terbuka) dari "proses baru setelah app dibunuh" (pty sudah
+     * tidak ada, layar tidak ada gunanya).
+     */
+    fun wasOpened(): Boolean = synchronized(lock) { session != null || generation > 0 }
 
     fun replay(): ByteArray = synchronized(lock) { session?.replay() ?: ByteArray(0) }
 

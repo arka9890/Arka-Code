@@ -162,7 +162,7 @@ fun EngineScreen(
     // Proses baru: rememberSaveable memulihkan overlay, tapi sesi pty tidak ikut
     // dipulihkan — tanpa ini layar menulis "memulai…" selamanya tanpa sesi.
     LaunchedEffect(Unit) {
-        if (showTerminal && !TerminalHost.hasSession()) {
+        if (showTerminal && !TerminalHost.wasOpened()) {
             showTerminal = false
             terminalNotice = null
         }
@@ -194,10 +194,12 @@ fun EngineScreen(
             val ok = withContext(Dispatchers.IO) {
                 TerminalHost.open(engine.currentDistro(), terminalWorkspace, terminalContainers)
             }
-            // Tab bisa sudah ditutup / di-restart saat open() masih jalan:
-            // sesi yang tak dipakai siapa pun hanya mengunci rootfs tanpa layar.
+            // Tab bisa sudah ditutup / di-restart saat open() masih jalan.
+            // Sesi hanya dihentikan kalau tab memang sudah tidak terbuka —
+            // kalau tiket berubah karena ada permintaan lebih baru, sesi itu
+            // milik permintaan tersebut dan tidak boleh ikut mati.
             if (openTicket[0] != myTicket) {
-                TerminalHost.stop()
+                if (!showTerminal) TerminalHost.stop()
                 return@launch
             }
             if (!ok) terminalNotice = I18n.s.terminalNotReady
@@ -617,6 +619,8 @@ fun EngineScreen(
                     onResize = TerminalHost::resize,
                     onAck = TerminalHost::ack,
                     onRestart = {
+                        val myTicket = openTicket[0]
+                        openTicket[0]++
                         terminalNotice = null
                         terminalEpoch++
                         scope.launch {
@@ -626,6 +630,12 @@ fun EngineScreen(
                                     terminalWorkspace,
                                     terminalContainers,
                                 )
+                            }
+                            // Sama seperti openTerminal(): kalau tab ditutup saat
+                            // restart masih jalan, jangan tinggalkan pty tanpa layar.
+                            if (openTicket[0] != myTicket) {
+                                if (!showTerminal) TerminalHost.stop()
+                                return@launch
                             }
                             // Gagal restart berarti tidak ada pty: tanpa pesan ini
                             // layar hanya menulis "memulai…" selamanya.
