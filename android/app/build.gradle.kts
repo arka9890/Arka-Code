@@ -27,11 +27,18 @@ val hasSigning = keystorePropsFile.exists() &&
 android {
     namespace = "com.arkacode.app"
     compileSdk = 35
+    // Modul native pty (src/main/cpp) memakai NDK; versi dipin agar build CI stabil.
+    ndkVersion = "27.0.12077973"
 
     defaultConfig {
         applicationId = "com.arkacode.app"
         minSdk = 26
         targetSdk = 35
+        // Samakan dengan ABI binary proot (arka.ProotBinaries), supaya
+        // libterminalpty.so dan libproot.so selalu ada di APK yang sama.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+        }
         // Naik tiap build CI (GITHUB_RUN_NUMBER) → update dikenali sistem.
         // versionCode epoch-menit: monoton naik & unik walau CI-nya GHA / Woodpecker /
         // build lokal, supaya HP tak pernah menolak upgrade karena code tidak berubah.
@@ -72,6 +79,13 @@ android {
 
     buildFeatures {
         compose = true
+    }
+
+    // Modul native pty: satu-satunya bagian app yang butuh NDK/CMake.
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+        }
     }
 
     // Binary proot harus benar-benar diekstrak ke nativeLibraryDir supaya bisa
