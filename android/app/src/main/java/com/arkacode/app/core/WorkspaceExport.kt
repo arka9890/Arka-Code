@@ -184,6 +184,22 @@ object WorkspaceExport {
         bytes.size.toLong()
     }
 
+    /**
+     * Salin satu berkas app-private (hasil model di folder sesi) ke folder
+     * Download publik, tanpa server dan tanpa dialog SAF. Streaming — berkas
+     * ratusan MB tidak boleh dibaca utuh ke memori.
+     */
+    suspend fun saveFileToDownloads(
+        context: Context,
+        file: File,
+        mime: String,
+    ): Long = withContext(Dispatchers.IO) {
+        writeToDownloads(context, file.name, mime) { out ->
+            file.inputStream().buffered(64 * 1024).use { it.copyTo(out) }
+        }
+        file.length()
+    }
+
     /** MIME kasar berdasarkan ekstensi — cukup untuk MediaStore memilih folder. */
     private fun mimeOf(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
         "zip" -> "application/zip"
@@ -206,7 +222,7 @@ object WorkspaceExport {
      * belum ada koleksi Downloads, jadi tulis langsung ke path publik
      * (izin WRITE_EXTERNAL_STORAGE di-declare maxSdkVersion 28).
      */
-    private fun writeToDownloads(
+    internal fun writeToDownloads(
         context: Context,
         name: String,
         mime: String,

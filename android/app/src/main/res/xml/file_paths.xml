@@ -7,4 +7,9 @@
     <files-path
         name="tts-engine"
         path="tts-engine/" />
+    <!-- Berkas hasil model yang ditampilkan di chat: dipakai tombol Bagikan
+         dan Buka (ACTION_SEND / ACTION_VIEW lewat URI FileProvider). -->
+    <files-path
+        name="workspace"
+        path="workspace/" />
 </paths>
