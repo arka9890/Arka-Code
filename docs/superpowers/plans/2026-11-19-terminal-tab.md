@@ -503,10 +503,12 @@ Row hemat tinggi di bawah WebView, tiap tombol mengirim byte ke `onInput`: `Esc`
 
 `Tempel` membaca `LocalClipboardManager.current.getText()` lalu mengirim byte UTF-8-nya lewat `onInput`. `Salin` memanggil `webView.evaluateJavascript("termGetSelection()")`, hasilnya berupa string JSON-escape; bila isinya tidak kosong, taruh di clipboard Android lewat `ClipboardManager`. Seleksi native WebView tidak dipakai karena renderer canvas tidak mengeksposnya.
 
-- [ ] **Step 4: Verifikasi kompilasi**
+- [ ] **Step 4: Verifikasi kompilasi + paritas i18n**
 
 Run: `cd android && ./gradlew :app:compileDebugKotlin`
 Expected: `BUILD SUCCESSFUL`.
+
+Cek paritas: jumlah key yang dideklarasikan di `I18n` harus sama dengan jumlah assignment di blok ID **dan** di blok EN (pola skrip yang dipakai saat pembersihan key sebelumnya). Tidak boleh ada key yang hanya ada di satu bahasa.
 
 - [ ] **Step 5: Commit**
 
@@ -546,14 +548,13 @@ git commit -m "feat(terminal): layar terminal, baris tombol, salin dan tempel"
 
 - [ ] **Step 1: Tulis `TerminalHost`**
 
-`object` tingkat proses, bukan `remember`: satu `TerminalSession?`, satu `TerminalReplayBuffer(128 * 1024)`, `MutableStateFlow<TerminalState>(Starting)`, dan `Channel<ByteArray>(capacity = 64)` untuk output.
+`object` tingkat proses, bukan `remember`: satu `TerminalSession?` (yang memiliki ring buffer replay), `MutableStateFlow<TerminalState>(Starting)`, dan `Channel<ByteArray>(capacity = 64)` untuk output.
 
 - `open`: bila sudah ada sesi hidup untuk rootfs yang sama, kembalikan `true` tanpa memulai ulang. Bila ada sesi lain, `stop()` dulu. Lalu `TerminalCommand.forDistro(...)`; `null` → `false`. `scope.launch(Dispatchers.IO)` memanggil `session.start(argv, env, cwd, 24, 80)`; `onExit` mengisi `state = Exited(code)`.
 - `write`/`resize`/`ack` meneruskan ke sesi; aman dipanggil saat sesi null (abaikan).
-- `replay` mengembalikan `TerminalReplayBuffer.snapshot()`.
-- `stop`: `session.close()`, `state = Starting`, kosongkan buffer replay, `session = null`. `aliveFor` menjadi `false` setelahnya.
+- `replay` mengembalikan `session?.replay() ?: ByteArray(0)`.
+- `stop`: `session.close()`, `session = null`, `state = Starting`. `aliveFor` menjadi `false` setelahnya.
 - `aliveFor(rootfs)`: `session != null && state !is Exited && rootfs == activeRootfs`. `activeRootfs` (path absolut) disimpan host saat `open`.
-- Catat di komentar kelas: sesi mati bersama proses; tidak ada foreground service (lihat non-goal design).
 - Catat di komentar kelas: sesi mati bersama proses; tidak ada foreground service (lihat non-goal design).
 
 - [ ] **Step 2: Tombol di `ReadyScreen` dan layar gagal Boot**
@@ -568,9 +569,9 @@ if (!TerminalHost.open(engine.distro, workspace, containers)) notReady = true
 
 - [ ] **Step 3: Tampilkan `TerminalScreen`**
 
-Di `EngineScreen`, setelah `showTerminal` true: `TerminalScreen(state = TerminalHost.state.collectAsState().value, distroLabel = engine.distro.label, replay = TerminalHost.replay(), output = TerminalHost.output, onInput = TerminalHost::write, onResize = TerminalHost::resize, onAck = TerminalHost::ack, onRestart = { TerminalHost.restart(...) }, onClose = { TerminalHost.stop(); showTerminal = false })`.
+Di `EngineScreen`, setelah `showTerminal` true: `TerminalScreen(state = TerminalHost.state.collectAsState().value, distroLabel = engine.distro.label, replay = remember { TerminalHost.replay() }, output = TerminalHost.output, onInput = TerminalHost::write, onResize = TerminalHost::resize, onAck = TerminalHost::ack, onRestart = { TerminalHost.restart(...) }, onClose = { TerminalHost.stop(); showTerminal = false })`.
 
-`TerminalScreen` mengambil `replay` sekali saat komposisi; karena itu parameter dibaca dalam `remember { TerminalHost.replay() }` di dalam layar.
+`replay` dibaca sekali saat layar dipasang (`remember` tanpa key) supaya potongan yang datang belakangan tidak dikirim dua kali; aliran `output` menangani sisanya.
 
 - [ ] **Step 4: Distro berganti → sesi lama berhenti**
 
