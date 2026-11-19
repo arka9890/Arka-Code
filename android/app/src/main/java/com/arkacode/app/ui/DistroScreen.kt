@@ -80,11 +80,12 @@ fun DistroScreen(
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val uiPrefs = remember { SessionUiPrefs(context) }
     val termux = remember { TermuxBridge(context) }
-    // `terminalRunning` tetap sumber kebenaran (rootfs bisa beda dari yang aktif),
-    // tapi state terminal diumpankan sebagai state Compose supaya perubahan
-    // sesi langsung memicu recomposisi tombol di bawah.
+    // Sesi terminal diumpankan sebagai state Compose supaya perubahan
+    // (Starting → Running → Exited) memicu recomposisi; nilainya sendiri dibaca
+    // langsung tiap komposisi karena distro aktif juga ikut menentukan.
+    @Suppress("UNUSED_VARIABLE")
     val terminalState by com.arkacode.app.core.TerminalHost.state.collectAsState()
-    val terminalBusy = remember(terminalState) { terminalRunning() }
+    val terminalBusy = terminalRunning()
 
     var runtime by remember { mutableStateOf(RuntimeMode.PROOT) }
     var distroId by remember { mutableStateOf(DistroCatalog.ALPINE_320.id) }
@@ -295,6 +296,9 @@ fun DistroScreen(
                     // yang tidak ada.
                     distroId = specToInstall.id
                     engine.setDistro(specToInstall)
+                    // Sesi terminal yang hidup masih memegang rootfs lama.
+                    // Dihentikan lewat callback yang sama seperti jalur pilih manual.
+                    onDistroChanged()
                     withContext(Dispatchers.IO) {
                         runCatching { uiPrefs.setDistroId(specToInstall.id) }
                     }

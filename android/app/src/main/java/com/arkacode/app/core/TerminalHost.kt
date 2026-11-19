@@ -9,10 +9,13 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.io.File
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Pemilik tunggal sesi terminal proses.
@@ -38,18 +41,42 @@ object TerminalHost {
      */
     private const val OUTPUT_CHUNKS = 64
 
+    /**
+     * Satu potongan output. [gen] menandai sesi pemilik, [end] offset akhir
+     * kumulatif potongan itu di buffer replay.
+     */
+    private class Chunk(val bytes: ByteArray, val gen: Int, val end: Long)
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _state = MutableStateFlow<TerminalState>(TerminalState.Starting)
     val state: StateFlow<TerminalState> = _state.asStateFlow()
 
-    private val channel = Channel<ByteArray>(capacity = OUTPUT_CHUNKS)
+    private val channel = Channel<Chunk>(capacity = OUTPUT_CHUNKS)
 
-    /** Satu instance selamanya: kolektor WebView tidak boleh ikut restart. */
+    /**
+     * Offset replay yang sudah diputar ulang untuk layar yang sedang terpasang.
+     * Potongan dengan `end` di bawah/ sama dengan nilai ini sudah ikut di
+     * replay, jadi dibuang agar layar tidak mendapat byte ganda setelah
+     * rotasi / tutup-buka tab.
+     */
+    private val replayed = AtomicLong(0L)
+
+    /**
+     * Satu koleksi selamanya: kolektor WebView tidak boleh ikut restart.
+     * Saringan generasi + offset bekerja di sisi kolektor, jadi potongan milik
+     * sesi yang sudah pensiun tidak pernah sampai ke layar baru.
+     */
     val output: Flow<ByteArray> = channel.receiveAsFlow()
+        .filter { it.gen == generation && it.end > replayed.get() }
+        .map { it.bytes }
 
     private val lock = Any()
+
+    @Volatile
     private var session: TerminalSession? = null
+
+    @Volatile
     private var activeRootfs: String? = null
 
     /** Naik tiap [open]/[stop]; exit dan output sesi lama tidak boleh menimpa sesi baru. */
@@ -74,10 +101,13 @@ object TerminalHost {
             val cwd = workspaceDir?.absolutePath ?: distro.rootfsDir.absolutePath
             generation++
             val gen = generation
+            // Offset sesi baru mulai dari nol lagi, jadi penanda replay lama
+            // harus dikosongkan; kalau tidak, potongan baru tersaring semua.
+            replayed.set(0L)
             _state.value = TerminalState.Starting
             val created = TerminalSession(
                 scope = scope,
-                onOutput = { chunk -> emit(gen, chunk) },
+                onOutput = { chunk, end -> emit(gen, chunk, end) },
                 onExit = { code ->
                     synchronized(lock) {
                         if (gen == generation) _state.value = TerminalState.Exited(code)
@@ -88,8 +118,11 @@ object TerminalHost {
             scope.launch {
                 val started = created.start(argv, hostEnv(distro, workspaceDir, cwd), cwd, ROWS, COLS)
                 synchronized(lock) {
+                    // Bisa jadi sudah di-stop/di-ganti saat start() berjalan.
+                    // Sesi itu harus selalu ditutup, walau start() sukses:
+                    // kalau tidak, pty + shell proot hidup tanpa pemilik.
                     if (gen != generation) {
-                        if (!started) created.close()
+                        created.close()
                         return@launch
                     }
                     if (!started) {
@@ -107,7 +140,29 @@ object TerminalHost {
             true
         }
 
-    fun replay(): ByteArray = session?.replay() ?: ByteArray(0)
+    /**
+     * Layar terminal dipasang kembali (mutasi komposisi / rotasi).
+     *
+     * Mengembalikan isi layar terakhir dan menandai offset itu sebagai sudah
+     * diputar ulang, lalu mengosongkan kanal dari potongan yang isinya sudah
+     * pasti ikut di replay. Urutan ini penting: snapshot dulu (kunci yang sama
+     * menahan [TerminalSession] saat merekam), lalu kuras kanal — potongan yang
+     * tercatat sebelum snapshot tapi belum terkirim tetap tertangkap penanda
+     * offset, jadi tidak ada byte yang hilang maupun tampil dua kali.
+     */
+    fun reattach(): ByteArray = synchronized(lock) {
+        val live = session
+        if (live == null) {
+            drainChannel()
+            return ByteArray(0)
+        }
+        val (snapshot, total) = live.reattach()
+        drainChannel()
+        replayed.set(total)
+        snapshot
+    }
+
+    fun replay(): ByteArray = synchronized(lock) { session?.replay() ?: ByteArray(0) }
 
     fun write(bytes: ByteArray) {
         session?.write(bytes)
@@ -141,13 +196,18 @@ object TerminalHost {
         activeRootfs = null
         // Naikkan generasi dulu: exit yang menyusul dari sesi lama diabaikan.
         generation++
+        replayed.set(0L)
         _state.value = TerminalState.Starting
         // Pembaca bisa sedang menunggu ruang di kanal; kosongkan supaya
         // close() tidak menggantung di runBlocking.
-        while (channel.tryReceive().isSuccess) {
-            // buang sisa potongan milik sesi lama
-        }
+        drainChannel()
         old?.close()
+    }
+
+    private fun drainChannel() {
+        while (channel.tryReceive().isSuccess) {
+            // potongan milik sesi lama / sudah diputar ulang
+        }
     }
 
     /**
@@ -166,10 +226,10 @@ object TerminalHost {
      * Kolektor layar bisa belum siap saat byte pertama datang; blokir pembaca
      * pty alih-alih membuang byte. Aman: dipanggil dari thread pembaca
      * [TerminalSession] (Dispatchers.IO), bukan main thread. Byte dari sesi
-     * yang sudah diganti dibuang, bukan dikirim ke layar baru.
+     * yang sudah diganti disaring di [output] lewat penanda generasi.
      */
-    private fun emit(gen: Int, chunk: ByteArray) {
+    private fun emit(gen: Int, chunk: ByteArray, end: Long) {
         if (gen != generation) return
-        runBlocking { channel.send(chunk) }
+        runBlocking { channel.send(Chunk(chunk, gen, end)) }
     }
 }

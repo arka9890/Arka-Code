@@ -53,6 +53,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -134,11 +135,13 @@ fun EngineScreen(
     var lines by remember { mutableStateOf(listOf<String>()) }
     var failMsg by remember { mutableStateOf<String?>(null) }
     var working by remember { mutableStateOf(false) }
-    var showTerminal by remember { mutableStateOf(false) }
+    var showTerminal by rememberSaveable { mutableStateOf(false) }
     // Naik tiap terminal dibuka/di-restart: memaksa WebView baru dipasang supaya
     // ring buffer diputar ulang (halaman hanya memutar `replay` sekali per muat).
-    var terminalEpoch by remember { mutableIntStateOf(0) }
-    var terminalNotice by remember { mutableStateOf<String?>(null) }
+    // Disimpan lewat rememberSaveable: rotasi memusnahkan Activity, sedangkan
+    // pty milik TerminalHost tetap hidup — tanpa nilai ini tab terminal hilang.
+    var terminalEpoch by rememberSaveable { mutableIntStateOf(0) }
+    var terminalNotice by rememberSaveable { mutableStateOf<String?>(null) }
     val terminalWorkspace = remember { File(context.filesDir, "workspace").apply { mkdirs() } }
     val terminalContainers = remember { File(context.filesDir, "containers").apply { mkdirs() } }
 
@@ -146,16 +149,28 @@ fun EngineScreen(
      * Buka tab Terminal. Bisa dipakai walau server engine tidak jalan: yang
      * dibutuhkan cuma rootfs + binary proot. Runtime Termux tidak punya pty
      * yang bisa dialirkan balik ke app, jadi layarnya hanya menjelaskan itu.
+     *
+     * `open()` menyentuh filesystem (resolve binary proot, symlink rootfs) di
+     * dalam kunci host, jadi dijalankan di IO dan layar dibuka lebih dulu:
+     * pengguna langsung melihat status "memulai…".
      */
     fun openTerminal() {
-        terminalNotice = if (engine.runtimeMode == com.arkacode.app.core.RuntimeMode.PROOT) {
-            val ok = TerminalHost.open(engine.currentDistro(), terminalWorkspace, terminalContainers)
-            if (ok) null else I18n.s.terminalNotReady
-        } else {
-            I18n.s.terminalOnlyProot
-        }
         terminalEpoch++
         showTerminal = true
+        if (engine.runtimeMode != com.arkacode.app.core.RuntimeMode.PROOT) {
+            // Sesi proot lama tidak boleh tetap hidup di belakang pesan ini:
+            // ketikan akan masuk ke shell yang tak terlihat.
+            TerminalHost.stop()
+            terminalNotice = I18n.s.terminalOnlyProot
+            return
+        }
+        terminalNotice = null
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                TerminalHost.open(engine.currentDistro(), terminalWorkspace, terminalContainers)
+            }
+            if (!ok) terminalNotice = I18n.s.terminalNotReady
+        }
     }
 
     fun stamp(): String =
@@ -563,14 +578,23 @@ fun EngineScreen(
                 TerminalScreen(
                     state = terminalState,
                     distroLabel = engine.currentDistro().spec.label,
-                    replay = remember { TerminalHost.replay() },
+                    // `reattach` = snapshot layar terakhir + lepas jatah byte
+                    // milik WebView sebelumnya, sekaligus satu sumber kebenaran
+                    // supaya isi tidak tampil dua kali setelah rotasi.
+                    replay = remember { TerminalHost.reattach() },
                     output = TerminalHost.output,
                     onInput = TerminalHost::write,
                     onResize = TerminalHost::resize,
                     onAck = TerminalHost::ack,
                     onRestart = {
-                        TerminalHost.restart(engine.currentDistro(), terminalWorkspace, terminalContainers)
-                        terminalNotice = null
+                        val ok = TerminalHost.restart(
+                            engine.currentDistro(),
+                            terminalWorkspace,
+                            terminalContainers,
+                        )
+                        // Gagal restart berarti tidak ada pty: tanpa pesan ini
+                        // layar hanya menulis "memulai…" selamanya.
+                        terminalNotice = if (ok) null else I18n.s.terminalNotReady
                         terminalEpoch++
                     },
                     onClose = {

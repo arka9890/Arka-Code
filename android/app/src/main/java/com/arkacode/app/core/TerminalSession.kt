@@ -27,7 +27,12 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class TerminalSession(
     private val scope: CoroutineScope,
-    private val onOutput: (ByteArray) -> Unit,
+    /**
+     * Dipanggil untuk setiap potongan byte. Argumen kedua adalah offset akhir
+     * kumulatif potongan itu di buffer replay: pemilik sesi memakainya untuk
+     * membedakan byte yang sudah diputar ulang dari byte yang masih baru.
+     */
+    private val onOutput: (ByteArray, Long) -> Unit,
     private val onExit: (Int) -> Unit,
 ) {
 
@@ -116,6 +121,20 @@ class TerminalSession(
     /** Isi layar terakhir untuk WebView baru; buffer tidak dikosongkan. */
     fun replay(): ByteArray = replayBuffer.snapshot()
 
+    /**
+     * WebView baru dipasang: kembalikan isi layar terakhir beserta offset
+     * akhirnya, dan lepas jatah backpressure yang masih dipegang byte milik
+     * WebView lama.
+     *
+     * Tanpa pelepasan jatah, byte yang sudah tergambar di WebView yang lalu
+     * musnah tidak pernah di-ack, jadi pembaca pty berhenti permanen di jatah
+     * 8 MB dan shell membeku sampai sesi di-restart.
+     */
+    fun reattach(): Pair<ByteArray, Long> {
+        releaseAllBudget()
+        return replayBuffer.snapshotWithTotal()
+    }
+
     /** SIGHUP, jeda singkat, lalu SIGKILL; fd ditutup sekali saja. */
     fun close() {
         val h = synchronized(lifecycle) {
@@ -168,9 +187,9 @@ class TerminalSession(
                 }
                 unacked.addAndGet(n)
                 val chunk = buffer.copyOf(n)
-                replayBuffer.record(chunk)
+                val end = replayBuffer.record(chunk)
                 try {
-                    onOutput(chunk)
+                    onOutput(chunk, end)
                 } catch (ignored: RuntimeException) {
                     // UI pemilik sesi sudah mati (mis. WebView dilepas). Berhenti
                     // membaca; finally menutup pty supaya proot tidak menggantung
