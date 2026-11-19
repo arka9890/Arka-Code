@@ -132,7 +132,10 @@ class TerminalSession(
         releaseAllBudget()
         Thread({
             try {
-                TerminalPty.signal(h.pid, OsConstants.SIGHUP)
+                // Cek ulang tepat sebelum signal: waitFor bisa sudah me-reap pid
+                // di sela-sela, dan kill(-pid) ke pgid yang sudah didaur ulang
+                // akan mengenai proses group lain.
+                if (!exitNotified.get()) TerminalPty.signal(h.pid, OsConstants.SIGHUP)
             } catch (ignored: RuntimeException) {
                 // Proses mungkin sudah mati; SIGKILL di bawah tetap dicoba.
             }
@@ -142,7 +145,7 @@ class TerminalSession(
                 Thread.currentThread().interrupt()
             }
             try {
-                TerminalPty.signal(h.pid, OsConstants.SIGKILL)
+                if (!exitNotified.get()) TerminalPty.signal(h.pid, OsConstants.SIGKILL)
             } catch (ignored: RuntimeException) {
                 // Sama: fd tetap ditutup di bawah.
             } finally {
@@ -166,17 +169,31 @@ class TerminalSession(
                 unacked.addAndGet(n)
                 val chunk = buffer.copyOf(n)
                 replayBuffer.record(chunk)
-                onOutput(chunk)
+                try {
+                    onOutput(chunk)
+                } catch (ignored: RuntimeException) {
+                    // UI pemilik sesi sudah mati (mis. WebView dilepas). Berhenti
+                    // membaca; finally menutup pty supaya proot tidak menggantung
+                    // dan onExit tetap dilaporkan.
+                    break
+                }
             }
         } catch (e: IOException) {
             // pty ditutup (proot berhenti); exit code menyusul lewat waitFor.
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
         } finally {
-            // waitFor memblokir, jadi jangan pernah di main thread.
-            val code = TerminalPty.waitFor(h.pid)
+            // Tutup fd lebih dulu: sisi slave melihat EIO sehingga proot tidak
+            // terblokir menulis ke pty yang sudah tidak dibaca, dan waitFor
+            // tidak menggantung. waitFor memblokir — jangan pernah di main thread.
             closeStreams()
-            if (exitNotified.compareAndSet(false, true)) onExit(code)
+            var code = -1
+            try {
+                code = TerminalPty.waitFor(h.pid)
+            } finally {
+                closeStreams()
+                if (exitNotified.compareAndSet(false, true)) onExit(code)
+            }
         }
     }
 
