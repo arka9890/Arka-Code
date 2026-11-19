@@ -27,11 +27,11 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -882,7 +882,7 @@ private fun ReadyScreen(
                 ClayNavItem(Icons.Default.SmartToy, I18n.s.navAI, selected = false, onClick = onOpenProviders),
                 ClayNavItem(Icons.Default.Build, I18n.s.navCaps, selected = false, onClick = onOpenCapabilities),
                 ClayNavItem(Icons.Default.Android, I18n.s.navBuild, selected = false, onClick = onOpenBuild),
-                ClayNavItem(Icons.Default.Face, I18n.s.terminalTitle, selected = false, onClick = onOpenTerminal),
+                ClayNavItem(Icons.Default.Terminal, I18n.s.terminalTitle, selected = false, onClick = onOpenTerminal),
                 ClayNavItem(Icons.Default.Settings, I18n.s.navSettings, selected = false, onClick = onOpenSettings),
                 ClayNavItem(Icons.Default.OpenInNew, I18n.s.arenaTitle, selected = false, onClick = {
                     ArenaLauncher.open(context)
