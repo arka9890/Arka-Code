@@ -627,6 +627,12 @@ fun EngineScreen(
                     onResize = TerminalHost::resize,
                     onAck = TerminalHost::ack,
                     onRestart = {
+                        // Restart pada runtime Termux memanggil proot yang tidak
+                        // bisa dipakai di sini — jangan lakukan, jelaskan saja.
+                        if (engine.runtimeMode != com.arkacode.app.core.RuntimeMode.PROOT) {
+                            terminalNotice = I18n.s.terminalOnlyProot
+                            return@TerminalScreen
+                        }
                         openTicket[0]++
                         val myTicket = openTicket[0]
                         terminalNotice = null

@@ -1,33 +1,5 @@
 package com.arkacode.app.core
 
-import java.io.ByteArrayOutputStream
-
-/**
- * Penampung output pty yang di-flush per potongan.
- *
- * Byte dikumpulkan sampai [maxBytes] lalu dikirim sebagai satu pesan ke
- * WebView, supaya satu frame tidak dipecah jadi ratusan pesan kecil.
- */
-class TerminalOutputBuffer(private val maxBytes: Int = 64 * 1024) {
-
-    private val out = ByteArrayOutputStream()
-
-    /** Null selama belum penuh; isi buffer (lalu kosong) begitu mencapai [maxBytes]. */
-    @Synchronized
-    fun append(bytes: ByteArray, length: Int): ByteArray? {
-        out.write(bytes, 0, length)
-        if (out.size() < maxBytes) return null
-        return drain()
-    }
-
-    /** Isi buffer lalu kosong. */
-    @Synchronized
-    fun drain(): ByteArray {
-        val bytes = out.toByteArray()
-        out.reset()
-        return bytes
-    }
-}
 
 /**
  * Ring buffer byte mentah untuk memutar ulang layar terminal.

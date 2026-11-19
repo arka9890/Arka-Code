@@ -58,6 +58,10 @@
   }
 
   function fit() {
+    // `loadUrl` berjalan sebelum AndroidView terpasang, jadi host.clientWidth /
+    // clientHeight bisa 0 dan clamp di bawah menghasilkan winsize palsu 2x2
+    // (prompt shell jadi berlipat sampai ResizeObserver menembak pertama).
+    if (host.clientWidth <= 0 || host.clientHeight <= 0) return;
     const cell = cellSize();
     const cols = Math.max(2, Math.floor(host.clientWidth / cell.width));
     const rows = Math.max(2, Math.floor(host.clientHeight / cell.height));

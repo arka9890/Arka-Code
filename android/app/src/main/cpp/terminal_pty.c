@@ -91,7 +91,6 @@ Java_com_arkacode_app_core_TerminalPty_nativeSpawn(
         return JNI_FALSE;
     }
 
-    const char *slave_name;
     int master = -1;
     int slave = -1;
     pid_t pid;
@@ -106,9 +105,15 @@ Java_com_arkacode_app_core_TerminalPty_nativeSpawn(
         LOGE("grantpt/unlockpt gagal: %s", strerror(errno));
         goto fail;
     }
-    slave_name = ptsname(master);
-    if (slave_name == NULL) {
-        LOGE("ptsname gagal: %s", strerror(errno));
+    /*
+     * `ptsname()` mengembalikan buffer statis, jadi dua `nativeSpawn` yang
+     * bertumpu (buka tab lalu Restart saat start() sesi pertama masih jalan)
+     * bisa saling menimpa nama slave — dua sesi lalu berbagi satu pty.
+     * `ptsname_r` memakai buffer milik pemanggil, jadi aman antar-thread.
+     */
+    char slave_name[256];
+    if (ptsname_r(master, slave_name, sizeof(slave_name)) != 0) {
+        LOGE("ptsname_r gagal: %s", strerror(errno));
         goto fail;
     }
     // O_CLOEXEC juga di slave: hanya fd 0/1/2 hasil dup2 yang ikut exec.
@@ -140,6 +145,19 @@ Java_com_arkacode_app_core_TerminalPty_nativeSpawn(
         sigset_t empty_mask;
         sigemptyset(&empty_mask);
         sigprocmask(SIG_SETMASK, &empty_mask, NULL);
+        /*
+         * Mask sinyal saja tidak cukup: disposisi SIG_IGN warisan runtime ART
+         * (SIGPIPE klasiknya) tetap terbawa lewat execve, sehingga pipeline
+         * guest seperti `yes | head` tidak pernah berhenti. Kembalikan ke
+         * SIG_DFL supaya semantik shell di distro normal.
+         */
+        signal(SIGPIPE, SIG_DFL);
+        signal(SIGCHLD, SIG_DFL);
+        signal(SIGINT, SIG_DFL);
+        signal(SIGQUIT, SIG_DFL);
+        signal(SIGTSTP, SIG_DFL);
+        signal(SIGTTIN, SIG_DFL);
+        signal(SIGTTOU, SIG_DFL);
         if (cwd != NULL) {
             if (chdir(cwd) != 0) {
                 /* cwd hilang bukan alasan batal: shell tetap bisa jalan di "/". */

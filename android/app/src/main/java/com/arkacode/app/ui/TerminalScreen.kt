@@ -13,8 +13,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -56,7 +60,13 @@ sealed interface TerminalState {
  */
 internal fun WebView.termWrite(bytes: ByteArray) {
     if (bytes.isEmpty()) return
-    evaluateJavascript("termWrite(\"${Base64.encodeToString(bytes, Base64.NO_WRAP)}\")", null)
+    // Kolektor output dan `onPageFinished` bisa menyentuh WebView tepat
+    // setelah `onRelease`-nya (rotasi/tutup). `evaluateJavascript` di WebView
+    // yang sudah dihancurkan melempar IllegalStateException yang mematikan
+    // app, jadi jalur ini dibungkus dan gagalnya diabaikan.
+    runCatching {
+        evaluateJavascript("termWrite(\"${Base64.encodeToString(bytes, Base64.NO_WRAP)}\")", null)
+    }
 }
 
 /** Sticky Ctrl/Alt: Ctrl memetakan karakter ke kontrol (`c` → 0x03), Alt menambah ESC. */
@@ -183,7 +193,15 @@ fun TerminalScreen(
         }
     }
 
-    Column(Modifier.fillMaxSize()) {
+    // Latar solid + padding inset aman: overlay ini berada di atas layar yang
+    // masih terisi (edge-to-edge). Tanpa ini baris tombol bawah tenggelam
+    // di balik bilah navigasi sentuh dan header menutupi kartu di belakangnya.
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .windowInsetsPadding(WindowInsets.safeDrawing),
+    ) {
         Row(
             Modifier
                 .fillMaxWidth()
@@ -203,6 +221,15 @@ fun TerminalScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            Spacer(Modifier.weight(1f))
+            // Status bar tipis: Restart/Tutup juga ada saat shell hidup, supaya
+            // "Tutup dulu baru hapus distro" benar-benar bisa dilakukan.
+            TextButton(onClick = onRestart, enabled = state is TerminalState.Running) {
+                Text(I18n.s.terminalRestart)
+            }
+            TextButton(onClick = onClose, enabled = state is TerminalState.Running) {
+                Text(I18n.s.terminalClose)
+            }
         }
 
         Box(
@@ -213,7 +240,17 @@ fun TerminalScreen(
             AndroidView(
                 factory = { webView },
                 modifier = Modifier.fillMaxSize(),
-                onRelease = { it.destroy() },
+                onRelease = {
+                    // Lepas jalur masuk JS sebelum destroy: `onPageFinished` yang
+                    // terlambat dan kolektor `output` tidak boleh lagi memanggil
+                    // `evaluateJavascript` di WebView yang sudah mati.
+                    // WebViewClient yang tidak melakukan apa pun: client asli
+                    // masih bisa membaca state dari objek ini, tapi callback-nya
+                    // tidak lagi ditujukan ke WebView yang sudah mati.
+                    it.webViewClient = object : WebViewClient() {}
+                    runCatching { it.removeJavascriptInterface("Bridge") }
+                    it.destroy()
+                },
             )
 
             if (state !is TerminalState.Running) {

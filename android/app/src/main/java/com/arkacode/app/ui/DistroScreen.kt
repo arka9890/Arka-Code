@@ -80,11 +80,13 @@ fun DistroScreen(
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val uiPrefs = remember { SessionUiPrefs(context) }
     val termux = remember { TermuxBridge(context) }
-    // Sesi terminal diumpankan sebagai state Compose supaya perubahan
-    // (Starting → Running → Exited) memicu recomposisi; nilainya sendiri dibaca
-    // langsung tiap komposisi karena distro aktif juga ikut menentukan.
+    // Sesi terminal memegang satu distro aktif (rootfs). Hapus/pasang ulang
+    // hanya ditolak untuk distro itu; distro lain di daftar tidak terpengaruh.
     val terminalState by com.arkacode.app.core.TerminalHost.state.collectAsState()
     val terminalBusy = terminalState.let { terminalRunning() }
+    /** Guard per-distro: hanya kartu yang rootfs-nya sedang dipakai terminal yang nonaktif. */
+    fun isTerminalBusyFor(spec: DistroSpec): Boolean =
+        terminalBusy && spec.id == engine.distroSpec.id
 
     var runtime by remember { mutableStateOf(RuntimeMode.PROOT) }
     var distroId by remember { mutableStateOf(DistroCatalog.ALPINE_320.id) }
@@ -466,19 +468,6 @@ fun DistroScreen(
                     }
                 }
 
-                // Terminal masih memegang rootfs: hapus dan pasang ulang ditolak
-                // sampai sesi ditutup dari layar terminal.
-                if (terminalBusy) {
-                    ClayCard(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            I18n.s.terminalDistroBusy,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.padding(8.dp),
-                        )
-                    }
-                }
-
                 // --- Runtime --------------------------------------------------
                 ClayCard(modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -757,6 +746,15 @@ fun DistroScreen(
                                         }
                                     }
 
+                                    // Sesi terminal masih memegang rootfs distro ini:
+                                    // hapus dan pasang ulang ditolak sampai ditutup.
+                                    if (isTerminalBusyFor(spec)) {
+                                        Text(
+                                            I18n.s.terminalDistroBusy,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.error,
+                                        )
+                                    }
                                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                         TextButton(
                                             onClick = { selectDistro(spec) },
@@ -774,7 +772,7 @@ fun DistroScreen(
                                             TextButton(
                                                 onClick = { install(spec) },
                                                 enabled = prootReady && supported &&
-                                                    !engine.isRunning() && !terminalBusy,
+                                                    !engine.isRunning() && !isTerminalBusyFor(spec),
                                             ) { Text(I18n.s.distroReinstall) }
                                             TextButton(
                                                 onClick = {
@@ -787,7 +785,7 @@ fun DistroScreen(
                                                         refresh()
                                                     }
                                                 },
-                                                enabled = !isRemoving && !engine.isRunning() && !terminalBusy,
+                                                enabled = !isRemoving && !engine.isRunning() && !isTerminalBusyFor(spec),
                                             ) { Text(I18n.s.distroRemove) }
                                         } else {
                                             TextButton(

@@ -1,6 +1,7 @@
 package com.arkacode.app.core
 
 import com.arkacode.app.ui.TerminalState
+import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -121,7 +122,15 @@ object TerminalHost {
             )
             // start() memblokir singkat (fork+exec), jadi jalankan di IO.
             scope.launch {
-                val started = created.start(argv, hostEnv(distro, workspaceDir, cwd), cwd, ROWS, COLS)
+                // Gagal di boundary native (mis. `libterminalpty.so` tak bisa
+                // dimuat, atau `adoptFd` menolak) harus dilaporkan sebagai
+                // sesi mati, bukan mematikan seluruh app lewat uncaught handler.
+                val started = runCatching {
+                    created.start(argv, hostEnv(distro, workspaceDir, cwd), cwd, ROWS, COLS)
+                }.getOrElse {
+                    Log.w("TerminalHost", "start gagal: ${it.message}")
+                    false
+                }
                 synchronized(lock) {
                     // Bisa jadi sudah di-stop/di-ganti saat start() berjalan.
                     // Sesi itu harus selalu ditutup, walau start() sukses:
@@ -170,8 +179,6 @@ object TerminalHost {
      * tidak ada, layar tidak ada gunanya).
      */
     fun wasOpened(): Boolean = synchronized(lock) { session != null || generation > 0 }
-
-    fun replay(): ByteArray = synchronized(lock) { session?.replay() ?: ByteArray(0) }
 
     fun write(bytes: ByteArray) {
         session?.write(bytes)

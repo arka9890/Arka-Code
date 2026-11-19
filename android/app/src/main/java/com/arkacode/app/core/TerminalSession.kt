@@ -118,9 +118,6 @@ class TerminalSession(
         }
     }
 
-    /** Isi layar terakhir untuk WebView baru; buffer tidak dikosongkan. */
-    fun replay(): ByteArray = replayBuffer.snapshot()
-
     /**
      * WebView baru dipasang: kembalikan isi layar terakhir beserta offset
      * akhirnya, dan lepas jatah backpressure yang masih dipegang byte milik
