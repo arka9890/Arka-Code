@@ -178,8 +178,8 @@ fun EngineScreen(
      * pengguna langsung melihat status "memulai…".
      */
     fun openTerminal() {
-        val myTicket = openTicket[0]
         openTicket[0]++
+        val myTicket = openTicket[0]
         terminalEpoch++
         showTerminal = true
         if (engine.runtimeMode != com.arkacode.app.core.RuntimeMode.PROOT) {
@@ -194,11 +194,11 @@ fun EngineScreen(
             val ok = withContext(Dispatchers.IO) {
                 TerminalHost.open(engine.currentDistro(), terminalWorkspace, terminalContainers)
             }
-            // Tab bisa sudah ditutup / di-restart saat open() masih jalan.
-            // Sesi hanya dihentikan kalau tab memang sudah tidak terbuka —
-            // kalau tiket berubah karena ada permintaan lebih baru, sesi itu
-            // milik permintaan tersebut dan tidak boleh ikut mati.
-            if (openTicket[0] != myTicket) {
+            // Stale: permintaan lain datang setelah ini (tiket berubah), atau tab
+            // memang sudah tertutup (guard restore / BackHandler / Tutup). Sesi
+            // hanya dihentikan kalau tab tidak terbuka — kalau ada permintaan
+            // lebih baru, pty-nya milik permintaan itu.
+            if (openTicket[0] != myTicket || !showTerminal) {
                 if (!showTerminal) TerminalHost.stop()
                 return@launch
             }
@@ -619,8 +619,8 @@ fun EngineScreen(
                     onResize = TerminalHost::resize,
                     onAck = TerminalHost::ack,
                     onRestart = {
-                        val myTicket = openTicket[0]
                         openTicket[0]++
+                        val myTicket = openTicket[0]
                         terminalNotice = null
                         terminalEpoch++
                         scope.launch {
@@ -633,7 +633,7 @@ fun EngineScreen(
                             }
                             // Sama seperti openTerminal(): kalau tab ditutup saat
                             // restart masih jalan, jangan tinggalkan pty tanpa layar.
-                            if (openTicket[0] != myTicket) {
+                            if (openTicket[0] != myTicket || !showTerminal) {
                                 if (!showTerminal) TerminalHost.stop()
                                 return@launch
                             }
