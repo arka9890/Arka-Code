@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import android.Manifest
 import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -45,7 +46,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -63,12 +66,14 @@ import com.arkacode.app.core.EngineConfig
 import com.arkacode.app.core.EngineManager
 import com.arkacode.app.core.EngineService
 import com.arkacode.app.core.SessionRunRegistry
+import com.arkacode.app.core.TerminalHost
 import com.arkacode.app.core.TermuxBridge
 import com.arkacode.app.net.OpenCodeClient
 import com.arkacode.app.net.ChatSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -129,6 +134,29 @@ fun EngineScreen(
     var lines by remember { mutableStateOf(listOf<String>()) }
     var failMsg by remember { mutableStateOf<String?>(null) }
     var working by remember { mutableStateOf(false) }
+    var showTerminal by remember { mutableStateOf(false) }
+    // Naik tiap terminal dibuka/di-restart: memaksa WebView baru dipasang supaya
+    // ring buffer diputar ulang (halaman hanya memutar `replay` sekali per muat).
+    var terminalEpoch by remember { mutableIntStateOf(0) }
+    var terminalNotice by remember { mutableStateOf<String?>(null) }
+    val terminalWorkspace = remember { File(context.filesDir, "workspace").apply { mkdirs() } }
+    val terminalContainers = remember { File(context.filesDir, "containers").apply { mkdirs() } }
+
+    /**
+     * Buka tab Terminal. Bisa dipakai walau server engine tidak jalan: yang
+     * dibutuhkan cuma rootfs + binary proot. Runtime Termux tidak punya pty
+     * yang bisa dialirkan balik ke app, jadi layarnya hanya menjelaskan itu.
+     */
+    fun openTerminal() {
+        terminalNotice = if (engine.runtimeMode == com.arkacode.app.core.RuntimeMode.PROOT) {
+            val ok = TerminalHost.open(engine.currentDistro(), terminalWorkspace, terminalContainers)
+            if (ok) null else I18n.s.terminalNotReady
+        } else {
+            I18n.s.terminalOnlyProot
+        }
+        terminalEpoch++
+        showTerminal = true
+    }
 
     fun stamp(): String =
         SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
@@ -271,239 +299,286 @@ fun EngineScreen(
         }
     }
 
-    when (val s = screen) {
-        is Screen.Boot -> {
-            LaunchedEffect(s.attempt, credsReady) { if (credsReady) pipeline() }
-            BootScreen(
-                lines = lines,
-                working = working,
-                failMsg = failMsg,
-                onRetry = {
-                    lines = emptyList()
-                    screen = Screen.Boot(s.attempt + 1)
-                },
-            )
-        }
-        is Screen.Ready -> {
-            // Kredensial OAuth/API key baru hanya dibaca server saat proses start
-            // ulang. Matikan server lama DULU sebelum masuk Boot: pipeline punya
-            // jalan pintas "server masih sehat → langsung masuk" dan
-            // startServerInProot early-return bila prosesnya masih hidup, jadi
-            // tanpa stop, "restart" hanya ilusi — kredensial lama tetap dipakai.
-            fun restartEngine() {
-                scope.launch {
-                    withContext(Dispatchers.IO) { runCatching { engine.stopServer() } }
-                    awaitServerDeath()
+    Box(Modifier.fillMaxSize()) {
+        when (val s = screen) {
+            is Screen.Boot -> {
+                LaunchedEffect(s.attempt, credsReady) { if (credsReady) pipeline() }
+                BootScreen(
+                    lines = lines,
+                    working = working,
+                    failMsg = failMsg,
+                    onOpenTerminal = { openTerminal() },
+                    onRetry = {
+                        lines = emptyList()
+                        screen = Screen.Boot(s.attempt + 1)
+                    },
+                )
+            }
+            is Screen.Ready -> {
+                // Kredensial OAuth/API key baru hanya dibaca server saat proses start
+                // ulang. Matikan server lama DULU sebelum masuk Boot: pipeline punya
+                // jalan pintas "server masih sehat → langsung masuk" dan
+                // startServerInProot early-return bila prosesnya masih hidup, jadi
+                // tanpa stop, "restart" hanya ilusi — kredensial lama tetap dipakai.
+                fun restartEngine() {
+                    scope.launch {
+                        withContext(Dispatchers.IO) { runCatching { engine.stopServer() } }
+                        awaitServerDeath()
+                        screen = Screen.Boot(0)
+                    }
+                }
+                val target = chatTarget
+                val chatClient = remember(port, password) { OpenCodeClient(port = port, password = password) }
+                val runs = remember(chatClient) { SessionRunRegistry(context, scope, chatClient) }
+                // FGS + notifikasi status bar: prioritas proses naik supaya server
+                // tetap hidup saat app masuk background. Izin notifikasi (Android
+                // 13+) diminta sekali; bila ditolak service tetap jalan, hanya
+                // notifikasinya yang disembunyikan sistem.
+                val notifLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestPermission(),
+                ) {}
+                LaunchedEffect(Unit) {
+                    if (Build.VERSION.SDK_INT >= 33) {
+                        notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                    // runCatching: Android 12+ melarang start FGS dari background —
+                    // kalau pipeline selesai saat app di-background, jangan crash.
+                    runCatching { EngineService.start(context, port, s.version) }
+                }
+                BackHandler(enabled = showCaps || showProviders || showSettings || showDistro || showBuild || target != null) {
+                    when {
+                        showCaps -> showCaps = false
+                        showProviders -> showProviders = false
+                        showSettings -> showSettings = false
+                        showDistro -> showDistro = false
+                        showBuild -> showBuild = false
+                        else -> chatTarget = null
+                    }
+                }
+                if (showCaps) {
+                    CapabilitiesScreen(
+                        port = port,
+                        password = password,
+                        onBack = { showCaps = false },
+                    )
+                } else if (showProviders) {
+                    ProvidersScreen(
+                        port = port,
+                        password = password,
+                        distroSpec = engine.distroSpec,
+                        onBack = { showProviders = false },
+                        onRestartEngine = ::restartEngine,
+                    )
+                } else if (showSettings) {
+                    SettingsScreen(
+                        port = port,
+                        password = password,
+                        engine = engine,
+                        isDark = darkTheme,
+                        onToggleTheme = onToggleTheme,
+                        onBack = { showSettings = false },
+                        onOpenDistro = { showSettings = false; showDistro = true },
+                        onStop = {
+                            scope.launch {
+                                withContext(Dispatchers.IO) { engine.stopServer() }
+                                awaitServerDeath()
+                                lines = lines + "[${stamp()}] server dihentikan."
+                                showSettings = false
+                                screen = Screen.PickDistro
+                            }
+                        },
+                        onRestartEngine = ::restartEngine,
+                        onPasswordSaved = { p, pw ->
+                            // Stop dengan kredensial LAMA dulu (state port/password
+                            // belum berubah) supaya awaitServerDeath mendeteksi
+                            // kematian server dengan benar; baru ganti kredensial
+                            // → Boot → server spawn ulang dengan password/port baru.
+                            scope.launch {
+                                withContext(Dispatchers.IO) { runCatching { engine.stopServer() } }
+                                awaitServerDeath()
+                                port = p
+                                password = pw
+                                screen = Screen.Boot(0)
+                            }
+                        },
+                    )
+                } else if (showDistro) {
+                    DistroScreen(
+                        engine = engine,
+                        onBack = { showDistro = false },
+                        onRuntimeChanged = { showDistro = false; rebootEngine() },
+                        onDistroChanged = { TerminalHost.stop() },
+                        terminalRunning = {
+                            TerminalHost.aliveFor(engine.currentDistro().rootfsDir.absolutePath)
+                        },
+                    )
+                } else if (showBuild) {
+                    BuildScreen(
+                        engine = engine,
+                        execScope = scope,
+                        onBack = { showBuild = false },
+                    )
+                } else if (target != null) {
+                    ChatScreen(
+                        sessionId = target.id,
+                        sessionTitle = target.title,
+                        port = port,
+                        password = password,
+                        client = chatClient,
+                        registry = runs,
+                        initialProviderID = target.providerID,
+                        initialModelID = target.modelID,
+                        initialAgentID = target.agentID,
+                        onBack = { chatTarget = null },
+                    )
+                } else {
+                    ReadyScreen(
+                        version = s.version,
+                        port = port,
+                        password = password,
+                        isDark = darkTheme,
+                        onToggleTheme = onToggleTheme,
+                        onStop = {
+                            scope.launch {
+                                withContext(Dispatchers.IO) { engine.stopServer() }
+                                awaitServerDeath()
+                                lines = lines + "[${stamp()}] server dihentikan."
+                                screen = Screen.PickDistro
+                            }
+                        },
+                        onOpenChat = { chatTarget = it },
+                        onNewSession = { chatTarget = it },
+                        onOpenProviders = { showProviders = true },
+                        onOpenCapabilities = { showCaps = true },
+                        onOpenSettings = { showSettings = true },
+                        onOpenBuild = { showBuild = true },
+                        onOpenTerminal = { openTerminal() },
+                    )
+                }
+            }
+            Screen.PickDistro -> {
+                // Warm reopen: server masih jalan dari sesi sebelumnya → langsung
+                // masuk tanpa melewati pemilihan distro.
+                LaunchedEffect(credsReady) {
+                    if (credsReady) {
+                        val h = runCatching {
+                            OpenCodeClient(port = port, password = password).health()
+                        }.getOrNull()
+                        if (h?.healthy == true) screen = Screen.Ready(h.version)
+                    }
+                }
+                // FGS + notifikasi status bar tidak relevan selama server mati.
+                LaunchedEffect(Unit) { EngineService.stop(context) }
+                if (showDistro) {
+                    BackHandler(enabled = true) { showDistro = false }
+                    DistroScreen(
+                        engine = engine,
+                        onBack = { showDistro = false },
+                        onRuntimeChanged = { showDistro = false; rebootEngine() },
+                        onDistroChanged = { TerminalHost.stop() },
+                        terminalRunning = {
+                            TerminalHost.aliveFor(engine.currentDistro().rootfsDir.absolutePath)
+                        },
+                    )
+                    return
+                }
+                /**
+                 * Pilih runtime/distro lalu boot. Instalasi rootfs on-demand sudah
+                 * ditangani pipeline (step 1), jadi cukup set pilihan di sini.
+                 */
+                fun pick(mode: com.arkacode.app.core.RuntimeMode, spec: com.arkacode.app.core.DistroSpec?) {
+                    engine.runtimeMode = mode
+                    if (spec != null) engine.setDistro(spec)
+                    scope.launch(Dispatchers.IO) {
+                        runCatching { uiPrefs.setRuntimeMode(mode) }
+                        if (spec != null) runCatching { uiPrefs.setDistroId(spec.id) }
+                    }
                     screen = Screen.Boot(0)
                 }
-            }
-            val target = chatTarget
-            val chatClient = remember(port, password) { OpenCodeClient(port = port, password = password) }
-            val runs = remember(chatClient) { SessionRunRegistry(context, scope, chatClient) }
-            // FGS + notifikasi status bar: prioritas proses naik supaya server
-            // tetap hidup saat app masuk background. Izin notifikasi (Android
-            // 13+) diminta sekali; bila ditolak service tetap jalan, hanya
-            // notifikasinya yang disembunyikan sistem.
-            val notifLauncher = rememberLauncherForActivityResult(
-                ActivityResultContracts.RequestPermission(),
-            ) {}
-            LaunchedEffect(Unit) {
-                if (Build.VERSION.SDK_INT >= 33) {
-                    notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                val termux = remember { TermuxBridge(context) }
+                var installedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+                var termuxReady by remember { mutableStateOf(false) }
+                LaunchedEffect(Unit) {
+                    val (ids, ready) = withContext(Dispatchers.IO) {
+                        val installed = DistroCatalog.PRESETS
+                            .filter { DistroManager(context, it).isInstalled() }
+                            .mapTo(mutableSetOf()) { it.id }
+                        installed to termux.status().ready
+                    }
+                    installedIds = ids
+                    termuxReady = ready
                 }
-                // runCatching: Android 12+ melarang start FGS dari background —
-                // kalau pipeline selesai saat app di-background, jangan crash.
-                runCatching { EngineService.start(context, port, s.version) }
-            }
-            BackHandler(enabled = showCaps || showProviders || showSettings || showDistro || showBuild || target != null) {
-                when {
-                    showCaps -> showCaps = false
-                    showProviders -> showProviders = false
-                    showSettings -> showSettings = false
-                    showDistro -> showDistro = false
-                    showBuild -> showBuild = false
-                    else -> chatTarget = null
+                Column(
+                    Modifier
+                        .fillMaxSize()
+                        .windowInsetsPadding(WindowInsets.statusBars)
+                        .windowInsetsPadding(WindowInsets.navigationBars)
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    ClayHeader(
+                        title = I18n.s.pickDistroTitle,
+                        leading = { ClayIconBadge(Icons.Default.Build) },
+                        actions = {
+                            TextButton(onClick = { showDistro = true }) { Text(I18n.s.distroOpen) }
+                        },
+                    )
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        item(key = "termux-app") {
+                            PickEntry(
+                                title = I18n.s.distroRuntimeTermux,
+                                status = if (termuxReady) I18n.s.distroInstalled else I18n.s.distroNotInstalled,
+                                onClick = { pick(com.arkacode.app.core.RuntimeMode.TERMUX, null) },
+                            )
+                        }
+                        items(DistroCatalog.PRESETS, key = { it.id }) { spec ->
+                            PickEntry(
+                                title = spec.label,
+                                status = if (spec.id in installedIds) {
+                                    I18n.s.distroInstalled
+                                } else {
+                                    I18n.s.distroNotInstalled
+                                },
+                                onClick = { pick(com.arkacode.app.core.RuntimeMode.PROOT, spec) },
+                            )
+                        }
+                    }
                 }
-            }
-            if (showCaps) {
-                CapabilitiesScreen(
-                    port = port,
-                    password = password,
-                    onBack = { showCaps = false },
-                )
-            } else if (showProviders) {
-                ProvidersScreen(
-                    port = port,
-                    password = password,
-                    distroSpec = engine.distroSpec,
-                    onBack = { showProviders = false },
-                    onRestartEngine = ::restartEngine,
-                )
-            } else if (showSettings) {
-                SettingsScreen(
-                    port = port,
-                    password = password,
-                    engine = engine,
-                    isDark = darkTheme,
-                    onToggleTheme = onToggleTheme,
-                    onBack = { showSettings = false },
-                    onOpenDistro = { showSettings = false; showDistro = true },
-                    onStop = {
-                        scope.launch {
-                            withContext(Dispatchers.IO) { engine.stopServer() }
-                            awaitServerDeath()
-                            lines = lines + "[${stamp()}] server dihentikan."
-                            showSettings = false
-                            screen = Screen.PickDistro
-                        }
-                    },
-                    onRestartEngine = ::restartEngine,
-                    onPasswordSaved = { p, pw ->
-                        // Stop dengan kredensial LAMA dulu (state port/password
-                        // belum berubah) supaya awaitServerDeath mendeteksi
-                        // kematian server dengan benar; baru ganti kredensial
-                        // → Boot → server spawn ulang dengan password/port baru.
-                        scope.launch {
-                            withContext(Dispatchers.IO) { runCatching { engine.stopServer() } }
-                            awaitServerDeath()
-                            port = p
-                            password = pw
-                            screen = Screen.Boot(0)
-                        }
-                    },
-                )
-            } else if (showDistro) {
-                DistroScreen(
-                    engine = engine,
-                    onBack = { showDistro = false },
-                    onRuntimeChanged = { showDistro = false; rebootEngine() },
-                )
-            } else if (showBuild) {
-                BuildScreen(
-                    engine = engine,
-                    execScope = scope,
-                    onBack = { showBuild = false },
-                )
-            } else if (target != null) {
-                ChatScreen(
-                    sessionId = target.id,
-                    sessionTitle = target.title,
-                    port = port,
-                    password = password,
-                    client = chatClient,
-                    registry = runs,
-                    initialProviderID = target.providerID,
-                    initialModelID = target.modelID,
-                    initialAgentID = target.agentID,
-                    onBack = { chatTarget = null },
-                )
-            } else {
-                ReadyScreen(
-                    version = s.version,
-                    port = port,
-                    password = password,
-                    isDark = darkTheme,
-                    onToggleTheme = onToggleTheme,
-                    onStop = {
-                        scope.launch {
-                            withContext(Dispatchers.IO) { engine.stopServer() }
-                            awaitServerDeath()
-                            lines = lines + "[${stamp()}] server dihentikan."
-                            screen = Screen.PickDistro
-                        }
-                    },
-                    onOpenChat = { chatTarget = it },
-                    onNewSession = { chatTarget = it },
-                    onOpenProviders = { showProviders = true },
-                    onOpenCapabilities = { showCaps = true },
-                    onOpenSettings = { showSettings = true },
-                    onOpenBuild = { showBuild = true },
-                )
             }
         }
-        Screen.PickDistro -> {
-            // Warm reopen: server masih jalan dari sesi sebelumnya → langsung
-            // masuk tanpa melewati pemilihan distro.
-            LaunchedEffect(credsReady) {
-                if (credsReady) {
-                    val h = runCatching {
-                        OpenCodeClient(port = port, password = password).health()
-                    }.getOrNull()
-                    if (h?.healthy == true) screen = Screen.Ready(h.version)
-                }
+        // Tab Terminal: overlay penuh di atas layar mana pun (Ready maupun Boot gagal),
+        // supaya shell tetap bisa dibuka walau server belum/tidak jalan.
+        if (showTerminal) {
+            // Didaftarkan setelah BackHandler layar di dalam `when`, jadi tombol
+            // Back menutup terminal dulu sebelum menutup overlay di bawahnya.
+            BackHandler {
+                TerminalHost.stop()
+                showTerminal = false
             }
-            // FGS + notifikasi status bar tidak relevan selama server mati.
-            LaunchedEffect(Unit) { EngineService.stop(context) }
-            if (showDistro) {
-                BackHandler(enabled = true) { showDistro = false }
-                DistroScreen(
-                    engine = engine,
-                    onBack = { showDistro = false },
-                    onRuntimeChanged = { showDistro = false; rebootEngine() },
-                )
-                return
-            }
-            /**
-             * Pilih runtime/distro lalu boot. Instalasi rootfs on-demand sudah
-             * ditangani pipeline (step 1), jadi cukup set pilihan di sini.
-             */
-            fun pick(mode: com.arkacode.app.core.RuntimeMode, spec: com.arkacode.app.core.DistroSpec?) {
-                engine.runtimeMode = mode
-                if (spec != null) engine.setDistro(spec)
-                scope.launch(Dispatchers.IO) {
-                    runCatching { uiPrefs.setRuntimeMode(mode) }
-                    if (spec != null) runCatching { uiPrefs.setDistroId(spec.id) }
-                }
-                screen = Screen.Boot(0)
-            }
-            val termux = remember { TermuxBridge(context) }
-            var installedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
-            var termuxReady by remember { mutableStateOf(false) }
-            LaunchedEffect(Unit) {
-                val (ids, ready) = withContext(Dispatchers.IO) {
-                    val installed = DistroCatalog.PRESETS
-                        .filter { DistroManager(context, it).isInstalled() }
-                        .mapTo(mutableSetOf()) { it.id }
-                    installed to termux.status().ready
-                }
-                installedIds = ids
-                termuxReady = ready
-            }
-            Column(
-                Modifier
-                    .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.statusBars)
-                    .windowInsetsPadding(WindowInsets.navigationBars)
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                ClayHeader(
-                    title = I18n.s.pickDistroTitle,
-                    leading = { ClayIconBadge(Icons.Default.Build) },
-                    actions = {
-                        TextButton(onClick = { showDistro = true }) { Text(I18n.s.distroOpen) }
+            // `key(terminalEpoch)`: Restart/membuka ulang memasang WebView baru,
+            // dan halaman hanya memutar `replay` sekali per muat. Tanpa key,
+            // layar lama (pageReady = true) tidak akan pernah menerima buffer lagi.
+            key(terminalEpoch) {
+                val terminalState by TerminalHost.state.collectAsState()
+                TerminalScreen(
+                    state = terminalState,
+                    distroLabel = engine.currentDistro().spec.label,
+                    replay = remember { TerminalHost.replay() },
+                    output = TerminalHost.output,
+                    onInput = TerminalHost::write,
+                    onResize = TerminalHost::resize,
+                    onAck = TerminalHost::ack,
+                    onRestart = {
+                        TerminalHost.restart(engine.currentDistro(), terminalWorkspace, terminalContainers)
+                        terminalNotice = null
+                        terminalEpoch++
                     },
+                    onClose = {
+                        TerminalHost.stop()
+                        showTerminal = false
+                    },
+                    notice = terminalNotice,
                 )
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    item(key = "termux-app") {
-                        PickEntry(
-                            title = I18n.s.distroRuntimeTermux,
-                            status = if (termuxReady) I18n.s.distroInstalled else I18n.s.distroNotInstalled,
-                            onClick = { pick(com.arkacode.app.core.RuntimeMode.TERMUX, null) },
-                        )
-                    }
-                    items(DistroCatalog.PRESETS, key = { it.id }) { spec ->
-                        PickEntry(
-                            title = spec.label,
-                            status = if (spec.id in installedIds) {
-                                I18n.s.distroInstalled
-                            } else {
-                                I18n.s.distroNotInstalled
-                            },
-                            onClick = { pick(com.arkacode.app.core.RuntimeMode.PROOT, spec) },
-                        )
-                    }
-                }
             }
         }
     }
@@ -541,6 +616,7 @@ private fun BootScreen(
     working: Boolean,
     failMsg: String?,
     onRetry: () -> Unit,
+    onOpenTerminal: () -> Unit,
 ) {
     val listState = rememberLazyListState()
     LaunchedEffect(lines.size) {
@@ -565,6 +641,11 @@ private fun BootScreen(
         failMsg?.let {
             Text(I18n.s.failedPrefix + it, color = MaterialTheme.colorScheme.error)
             Button(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text(I18n.s.retry) }
+            // Server mati justru saat paling butuh shell: cek serve.log, apk add,
+            // dan sebagainya harus tetap bisa lewat terminal.
+            Button(onClick = onOpenTerminal, modifier = Modifier.fillMaxWidth()) {
+                Text(I18n.s.terminalTitle)
+            }
         }
         ClayCard(
             modifier = Modifier
@@ -597,6 +678,7 @@ private fun ReadyScreen(
     onOpenCapabilities: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenBuild: () -> Unit,
+    onOpenTerminal: () -> Unit,
     isDark: Boolean,
     onToggleTheme: () -> Unit,
 ) {
@@ -718,6 +800,7 @@ private fun ReadyScreen(
                 ClayNavItem(Icons.Default.SmartToy, I18n.s.navAI, selected = false, onClick = onOpenProviders),
                 ClayNavItem(Icons.Default.Build, I18n.s.navCaps, selected = false, onClick = onOpenCapabilities),
                 ClayNavItem(Icons.Default.Android, I18n.s.navBuild, selected = false, onClick = onOpenBuild),
+                ClayNavItem(Icons.Default.Face, I18n.s.terminalTitle, selected = false, onClick = onOpenTerminal),
                 ClayNavItem(Icons.Default.Settings, I18n.s.navSettings, selected = false, onClick = onOpenSettings),
                 ClayNavItem(Icons.Default.OpenInNew, I18n.s.arenaTitle, selected = false, onClick = {
                     ArenaLauncher.open(context)

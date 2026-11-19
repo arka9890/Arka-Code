@@ -30,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -70,11 +71,20 @@ fun DistroScreen(
     engine: EngineManager,
     onBack: () -> Unit,
     onRuntimeChanged: () -> Unit = {},
+    /** Dipanggil setelah `engine.setDistro(...)`; pemilik sesi terminal menutup sesi lama. */
+    onDistroChanged: () -> Unit = {},
+    /** True selama terminal masih memakai distro aktif → hapus/pasang ulang ditolak. */
+    terminalRunning: () -> Boolean = { false },
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val uiPrefs = remember { SessionUiPrefs(context) }
     val termux = remember { TermuxBridge(context) }
+    // `terminalRunning` tetap sumber kebenaran (rootfs bisa beda dari yang aktif),
+    // tapi state terminal diumpankan sebagai state Compose supaya perubahan
+    // sesi langsung memicu recomposisi tombol di bawah.
+    val terminalState by com.arkacode.app.core.TerminalHost.state.collectAsState()
+    val terminalBusy = remember(terminalState) { terminalRunning() }
 
     var runtime by remember { mutableStateOf(RuntimeMode.PROOT) }
     var distroId by remember { mutableStateOf(DistroCatalog.ALPINE_320.id) }
@@ -415,6 +425,8 @@ fun DistroScreen(
         }
         distroId = spec.id
         engine.setDistro(spec)
+        // Sesi terminal milik distro lama; distro baru tidak boleh mewarisinya.
+        onDistroChanged()
         scope.launch {
             withContext(Dispatchers.IO) {
                 runCatching { uiPrefs.setDistroId(spec.id) }
@@ -448,6 +460,19 @@ fun DistroScreen(
                     ClayCard(modifier = Modifier.fillMaxWidth()) {
                         Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(8.dp))
                         TextButton(onClick = { message = null }) { Text(I18n.s.close) }
+                    }
+                }
+
+                // Terminal masih memegang rootfs: hapus dan pasang ulang ditolak
+                // sampai sesi ditutup dari layar terminal.
+                if (terminalBusy) {
+                    ClayCard(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            I18n.s.terminalDistroBusy,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(8.dp),
+                        )
                     }
                 }
 
@@ -745,7 +770,8 @@ fun DistroScreen(
                                             // Kalau mau diperbarui, hapus dulu.
                                             TextButton(
                                                 onClick = { install(spec) },
-                                                enabled = prootReady && supported && !engine.isRunning(),
+                                                enabled = prootReady && supported &&
+                                                    !engine.isRunning() && !terminalBusy,
                                             ) { Text(I18n.s.distroReinstall) }
                                             TextButton(
                                                 onClick = {
@@ -758,7 +784,7 @@ fun DistroScreen(
                                                         refresh()
                                                     }
                                                 },
-                                                enabled = !isRemoving && !engine.isRunning(),
+                                                enabled = !isRemoving && !engine.isRunning() && !terminalBusy,
                                             ) { Text(I18n.s.distroRemove) }
                                         } else {
                                             TextButton(

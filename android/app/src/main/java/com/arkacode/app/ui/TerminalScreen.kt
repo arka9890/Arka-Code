@@ -101,9 +101,13 @@ fun TerminalScreen(
     onAck: (Int) -> Unit,
     onRestart: () -> Unit,
     onClose: () -> Unit,
+    /** Alasan terminal tidak bisa dipakai (mis. runtime Termux); menimpa pesan status. */
+    notice: String? = null,
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
+    // Pty mati: tombol kirim dinonaktifkan supaya ketikan tidak masuk ke sesi mati.
+    val live = state is TerminalState.Running
 
     // Callback bisa berubah tiap recompose, sedangkan jembatan JS dibuat sekali.
     val inputNow = rememberUpdatedState(onInput)
@@ -235,7 +239,7 @@ fun TerminalScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Text(
-                            when (state) {
+                            notice ?: when (state) {
                                 TerminalState.Starting -> I18n.s.terminalStarting
                                 is TerminalState.Exited -> I18n.s.terminalExited(state.code)
                                 else -> ""
@@ -275,6 +279,7 @@ fun TerminalScreen(
                     onClick = { sendKey(bytes) },
                     contentPadding = PaddingValues(horizontal = 8.dp),
                     modifier = Modifier.height(36.dp),
+                    enabled = live,
                 ) {
                     Text(label, style = MaterialTheme.typography.labelMedium)
                 }
@@ -290,6 +295,7 @@ fun TerminalScreen(
                     onClick = { sendChar(bytes) },
                     contentPadding = PaddingValues(horizontal = 8.dp),
                     modifier = Modifier.height(36.dp),
+                    enabled = live,
                 ) {
                     Text(label, style = MaterialTheme.typography.labelMedium)
                 }
@@ -299,6 +305,7 @@ fun TerminalScreen(
                 onClick = { ctrl = !ctrl },
                 contentPadding = PaddingValues(horizontal = 8.dp),
                 modifier = Modifier.height(36.dp),
+                enabled = live,
             ) {
                 Text(
                     "Ctrl",
@@ -311,6 +318,7 @@ fun TerminalScreen(
                 onClick = { alt = !alt },
                 contentPadding = PaddingValues(horizontal = 8.dp),
                 modifier = Modifier.height(36.dp),
+                enabled = live,
             ) {
                 Text(
                     "Alt",
@@ -323,6 +331,7 @@ fun TerminalScreen(
                 onClick = { paste() },
                 contentPadding = PaddingValues(horizontal = 8.dp),
                 modifier = Modifier.height(36.dp),
+                enabled = live,
             ) {
                 Text(I18n.s.terminalPaste, style = MaterialTheme.typography.labelMedium)
             }

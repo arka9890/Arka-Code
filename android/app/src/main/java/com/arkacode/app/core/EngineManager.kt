@@ -86,6 +86,9 @@ class EngineManager(private val context: Context) {
 
     private val termux: TermuxBridge = TermuxBridge(context)
 
+    /** Distro aktif. Fitur terminal harus mengikuti distro yang sedang dipilih. */
+    fun currentDistro(): DistroManager = distro
+
     /** Ganti distro aktif. Rootfs lama tidak dihapus — user bisa ganti kembali. */
     fun setDistro(spec: DistroSpec) {
         distroSpec = spec
