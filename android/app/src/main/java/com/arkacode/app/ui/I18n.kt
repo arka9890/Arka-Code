@@ -293,6 +293,17 @@ class Strings {
     var containerRestartHint: String = ""
     var containerRemoveBusy: String = ""
     var containerInstallBusy: String = ""
+    // --- Terminal -----------------------------------------------------------
+    var terminalTitle: String = ""
+    var terminalStarting: String = ""
+    var terminalExited: (Int) -> String = { "" }
+    var terminalRestart: String = ""
+    var terminalClose: String = ""
+    var terminalOnlyProot: String = ""
+    var terminalNotReady: String = ""
+    var terminalPaste: String = ""
+    var terminalCopy: String = ""
+    var terminalDistroBusy: String = ""
 }
 
 private val id = Strings().apply {
@@ -563,6 +574,16 @@ private val id = Strings().apply {
     containerRestartHint = "Container terpasang. Restart engine (Stop → Start) agar PATH container aktif di server."
     containerRemoveBusy = "Hentikan engine dulu sebelum menghapus container."
     containerInstallBusy = "Sedang memasang container lain…"
+    terminalTitle = "Terminal"
+    terminalStarting = "Menyiapkan shell…"
+    terminalExited = { "Shell berhenti (kode $it)" }
+    terminalRestart = "Mulai ulang"
+    terminalClose = "Tutup"
+    terminalOnlyProot = "Terminal hanya tersedia untuk runtime proot"
+    terminalNotReady = "Distro belum siap dipakai terminal"
+    terminalPaste = "Tempel"
+    terminalCopy = "Salin"
+    terminalDistroBusy = "Tutup terminal dulu sebelum menghapus atau memasang ulang distro ini"
 }
 
 private val en = Strings().apply {
@@ -833,6 +854,16 @@ private val en = Strings().apply {
     containerRestartHint = "Container installed. Restart engine (Stop → Start) for the container PATH to apply to the server."
     containerRemoveBusy = "Stop the engine before removing a container."
     containerInstallBusy = "Another container is installing…"
+    terminalTitle = "Terminal"
+    terminalStarting = "Starting shell…"
+    terminalExited = { "Shell exited (code $it)" }
+    terminalRestart = "Restart"
+    terminalClose = "Close"
+    terminalOnlyProot = "Terminal is only available in proot runtime"
+    terminalNotReady = "Distro is not ready for the terminal"
+    terminalPaste = "Paste"
+    terminalCopy = "Copy"
+    terminalDistroBusy = "Close the terminal before removing or reinstalling this distro"
 }
 
 /** Registry bahasa global (state Compose → recompose otomatis saat diganti). */
