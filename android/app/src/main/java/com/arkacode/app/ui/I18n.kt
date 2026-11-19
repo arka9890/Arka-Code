@@ -240,7 +240,7 @@ class Strings {
     var arenaOpenInBrowser: String = ""
     var arenaDownloading: (String) -> String = { "" }
     var arenaSaved: (String) -> String = { "" }
-    var arenaDownloadFailed: (String, String) -> String = { "" }
+    var arenaDownloadFailed: (String, String) -> String = { _, _ -> "" }
     var engineInstalled: (String) -> String = { "" }
     var engineNotInstalled: String = ""
     var engineAutoUpdate: String = ""
