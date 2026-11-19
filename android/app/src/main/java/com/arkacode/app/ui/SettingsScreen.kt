@@ -83,6 +83,10 @@ fun SettingsScreen(
     var engineBusy by remember { mutableStateOf(false) }
     var updateInfo by remember { mutableStateOf<EngineManager.Update?>(null) }
     var engineMsg by remember { mutableStateOf<String?>(null) }
+    // Satu instance saja: SystemStats menyimpan sampel CPU sebelumnya sebagai
+    // titik acuan selisih, jadi instance baru tiap recompose akan membuat
+    // persentase CPU selalu 0.
+    val systemStats = remember { com.arkacode.app.core.SystemStats(context) }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
@@ -148,6 +152,10 @@ fun SettingsScreen(
                         }
                     }
                 }
+
+                // Kondisi perangkat: CPU + RAM. Kartu ini hanya membaca, tidak
+                // menulis pengaturan apa pun.
+                SystemUsageCard(stats = systemStats)
 
                 ClayCard(modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {

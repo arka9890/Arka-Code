@@ -304,6 +304,12 @@ class Strings {
     var terminalPaste: String = ""
     var terminalCopy: String = ""
     var terminalDistroBusy: String = ""
+    // --- Statistik perangkat ------------------------------------------------
+    var systemUsageTitle: String = ""
+    var cpuUsageLabel: String = ""
+    var ramUsageLabel: String = ""
+    var appMemoryLabel: String = ""
+    var usageUnavailable: String = ""
 }
 
 private val id = Strings().apply {
@@ -584,6 +590,11 @@ private val id = Strings().apply {
     terminalPaste = "Tempel"
     terminalCopy = "Salin"
     terminalDistroBusy = "Tutup terminal dulu sebelum menghapus atau memasang ulang distro ini"
+    systemUsageTitle = "Penggunaan perangkat"
+    cpuUsageLabel = "CPU"
+    ramUsageLabel = "RAM"
+    appMemoryLabel = "Proses aplikasi"
+    usageUnavailable = "tidak tersedia"
 }
 
 private val en = Strings().apply {
@@ -864,6 +875,11 @@ private val en = Strings().apply {
     terminalPaste = "Paste"
     terminalCopy = "Copy"
     terminalDistroBusy = "Close the terminal before removing or reinstalling this distro"
+    systemUsageTitle = "Device usage"
+    cpuUsageLabel = "CPU"
+    ramUsageLabel = "RAM"
+    appMemoryLabel = "App process"
+    usageUnavailable = "unavailable"
 }
 
 /** Registry bahasa global (state Compose → recompose otomatis saat diganti). */
