@@ -163,7 +163,10 @@ fun EngineScreen(
     // dipulihkan — tanpa ini layar menulis "memulai…" selamanya tanpa sesi.
     LaunchedEffect(Unit) {
         if (showTerminal && !TerminalHost.wasOpened()) {
-            showTerminal = false
+            // Sesi pty tidak ada: tab tidak berguna. Lewati closeTerminal supaya
+            // tiket tetap naik dan open() yang masih di-IO diabaikan (bukan
+            // pty yatim).
+            closeTerminal()
             terminalNotice = null
         }
     }
@@ -202,6 +205,11 @@ fun EngineScreen(
                 if (!showTerminal) TerminalHost.stop()
                 return@launch
             }
+            // Best-effort: kalau komposisi lepas di tengah open() di IO, scope
+            // dibatalkan dan pty yang terpasang tidak bisa di-ambil kembali di sini
+            // (bagian blokir open() tidak bisa dibatalkan). Ini bisa dipulihkan —
+            // open() berikutnya akan mengaktifkan sesi yang masih hidup lewat
+            // `activeRootfs`.
             if (!ok) terminalNotice = I18n.s.terminalNotReady
         }
     }
