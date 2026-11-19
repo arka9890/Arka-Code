@@ -38,6 +38,14 @@ object TurnFiles {
         "vendor",
         ".cache",
         ".next",
+        // Lingkungan virtual Python: satu `pip install` bisa menulis puluhan
+        // ribu berkas yang bukan hasil kerja model.
+        "venv",
+        "env",
+        "site-packages",
+        "Pods",
+        ".pytest_cache",
+        ".mypy_cache",
     )
 
     /**

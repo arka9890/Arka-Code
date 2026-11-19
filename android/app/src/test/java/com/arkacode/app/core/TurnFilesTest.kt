@@ -26,6 +26,8 @@ class TurnFilesTest {
         write("node_modules/a/index.js", "x")
         write("uploads/user.png", "x")
         write(".git/HEAD", "x")
+        write("venv/lib/python3/site-packages/x.py", "x")
+        write(".pytest_cache/v/cache", "x")
         val map = TurnFiles.scan(tmp.root)!!
         assertEquals(setOf("out/chart.png"), map.keys)
     }

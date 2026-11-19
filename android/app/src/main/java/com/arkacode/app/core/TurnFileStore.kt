@@ -59,10 +59,24 @@ class TurnFileStore(
             }
     }
 
-    private fun read(): TurnFileDoc = runCatching {
-        if (!file.isFile) TurnFileDoc()
-        else json.decodeFromString<TurnFileDoc>(file.readText())
-    }.getOrDefault(TurnFileDoc())
+    /**
+     * Dokumen di-cache berdasarkan mtime berkas: `files()` dipanggil untuk tiap
+     * pesan asisten di setiap putaran polling, dan membaca ulang JSON seluruhnya
+     * di setiap panggilan itu menghabiskan I/O tanpa alasan.
+     */
+    private fun read(): TurnFileDoc = synchronized(LOCK) {
+        val stamp = if (file.isFile) file.lastModified() else -1L
+        val cached = cache
+        if (cached != null && cached.path == file.absolutePath && cached.stamp == stamp && stamp > 0L) {
+            return@synchronized cached.doc
+        }
+        val doc = runCatching {
+            if (!file.isFile) TurnFileDoc()
+            else json.decodeFromString<TurnFileDoc>(file.readText())
+        }.getOrDefault(TurnFileDoc())
+        cache = Cached(file.absolutePath, stamp, doc)
+        doc
+    }
 
     private fun write(doc: TurnFileDoc) {
         runCatching {
@@ -75,6 +89,7 @@ class TurnFileStore(
                 file.writeText(tmp.readText())
                 tmp.delete()
             }
+            cache = Cached(file.absolutePath, file.lastModified(), doc)
         }
     }
 
@@ -83,6 +98,11 @@ class TurnFileStore(
 
         /** Satu kunci untuk semua instance: dua sesi bisa menyimpan bersamaan. */
         private val LOCK = Any()
+
+        private class Cached(val path: String, val stamp: Long, val doc: TurnFileDoc)
+
+        @Volatile
+        private var cache: Cached? = null
 
         fun of(context: Context): TurnFileStore = TurnFileStore(context.filesDir)
     }

@@ -28,6 +28,31 @@ import kotlinx.coroutines.withContext
  * yang ditambahkan [extra] adalah berkas hasil diff folder sesi (dibaca dari
  * [TurnFileStore]). Digabung tanpa duplikat path.
  */
+/**
+ * Id pesan asisten yang lahir di giliran ini (bukan milik giliran sebelumnya).
+ *
+ * `null` bila tidak ada assistant baru — mis. turn dihentikan sebelum balasan
+ * tersimpan. Pemanggil tidak boleh jatuh ke "assistant terakhir": menulis
+ * daftar berkas ke id lama akan menimpa kartu berkas giliran sebelumnya.
+ */
+internal fun newAssistantId(items: List<ChatItem>, preIds: Set<String>): String? =
+    items.filterIsInstance<ChatItem.Assistant>().lastOrNull { it.id !in preIds }?.id
+
+/**
+ * Pesan assistant punya isi (teks/reasoning/tool/berkas) — bukan bubble kosong.
+ *
+ * Berkas ikut dihitung: balasan yang isinya hanya "ini hasilnya" plus lampiran
+ * tetap balasan yang sah, dan tanpa ini loop settle menunggu balasan yang tak
+ * akan datang.
+ */
+internal fun hasBody(item: ChatItem.Assistant?): Boolean =
+    item != null && (
+        item.texts.any { it.isNotBlank() } ||
+            item.reasonings.isNotEmpty() ||
+            item.tools.isNotEmpty() ||
+            item.files.isNotEmpty()
+        )
+
 internal fun mergeTurnFiles(
     items: List<ChatItem>,
     extra: (String) -> List<ChatFile>,
@@ -139,13 +164,9 @@ class SessionRunRegistry(
             TurnFiles.changed(context, sessionId, before)
         }
         if (changed.isEmpty()) return
-        val target = r.messages.value
-            .filterIsInstance<ChatItem.Assistant>()
-            .lastOrNull { it.id !in r.preIds }
-            ?: r.messages.value.filterIsInstance<ChatItem.Assistant>().lastOrNull()
-            ?: return
+        val target = newAssistantId(r.messages.value, r.preIds) ?: return
         withContext(NonCancellable + Dispatchers.IO) {
-            TurnFileStore.of(context).save(target.id, changed.map { it.path })
+            TurnFileStore.of(context).save(target, changed.map { it.path })
         }
     }
 
@@ -377,10 +398,7 @@ class SessionRunRegistry(
         }
     }
 
-    /** Pesan assistant punya isi (teks/reasoning/tool) — bukan bubble kosong. */
-    private fun hasBody(item: ChatItem.Assistant?): Boolean =
-        item != null &&
-            (item.texts.any { it.isNotBlank() } || item.reasonings.isNotEmpty() || item.tools.isNotEmpty())
+
 
     /**
      * Kunci id pesan "sebelum turn ini". Assistant terakhir yang belum selesai

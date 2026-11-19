@@ -39,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -57,9 +58,20 @@ import java.util.Locale
 /** Berapa kartu yang ditampilkan sebelum diringkas jadi "+N berkas lagi". */
 private const val MAX_SHOWN = 12
 
-/** Di atas batas ini gambar tidak didecode (hindari OOM) dan video tidak diputar inline. */
+/** Di atas batas ini gambar tidak dipratinjau dan video tidak diputar inline. */
 private const val MAX_IMAGE_BYTES = 32L * 1024 * 1024
 private const val MAX_VIDEO_BYTES = 512L * 1024 * 1024
+
+/**
+ * Maksimal gambar yang menampilkan pratinjau di satu bubble.
+ *
+ * Tiap pratinjau menahan satu bitmap di heap (1024 px ≈ 4 MB), jadi tanpa batas
+ * ini satu bubble berisi banyak gambar bisa menghabiskan heap.
+ */
+private const val MAX_IMAGE_PREVIEWS = 3
+
+/** Pratinjau inline cukup 1024 px; layar penuh didecode ulang saat dibuka. */
+private const val THUMB_PX = 1024
 
 /**
  * Kartu berkas hasil model di dalam bubble jawaban.
@@ -71,13 +83,21 @@ private const val MAX_VIDEO_BYTES = 512L * 1024 * 1024
 @Composable
 fun ChatFileCards(files: List<ChatFile>, sessionRoot: File) {
     if (files.isEmpty()) return
+    val previewPaths = remember(files) {
+        files.filter { it.kind == ChatFile.Kind.IMAGE }
+            .take(MAX_IMAGE_PREVIEWS)
+            .map { it.path }
+            .toSet()
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 4.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        files.take(MAX_SHOWN).forEach { file -> ChatFileCard(file, sessionRoot) }
+        files.take(MAX_SHOWN).forEach { file ->
+            ChatFileCard(file, sessionRoot, withPreview = file.path in previewPaths)
+        }
         if (files.size > MAX_SHOWN) {
             Text(
                 I18n.s.filesMore(files.size - MAX_SHOWN),
@@ -90,14 +110,15 @@ fun ChatFileCards(files: List<ChatFile>, sessionRoot: File) {
 }
 
 @Composable
-private fun ChatFileCard(file: ChatFile, sessionRoot: File) {
+private fun ChatFileCard(file: ChatFile, sessionRoot: File, withPreview: Boolean) {
     val target = remember(file.path) { ChatFileActions.resolve(sessionRoot, file.path) }
     if (target == null || !target.isFile) return
     val size = if (file.size > 0L) file.size else target.length()
     ClayCard(contentPadding = PaddingValues(0.dp)) {
         Column(Modifier.fillMaxWidth()) {
             when {
-                file.kind == ChatFile.Kind.IMAGE && size <= MAX_IMAGE_BYTES -> ImageBlock(target)
+                file.kind == ChatFile.Kind.IMAGE && withPreview && size <= MAX_IMAGE_BYTES ->
+                    ImageBlock(target)
                 file.kind == ChatFile.Kind.VIDEO && size <= MAX_VIDEO_BYTES -> VideoBlock(target)
             }
             FileRow(file, sessionRoot, size)
@@ -105,22 +126,26 @@ private fun ChatFileCard(file: ChatFile, sessionRoot: File) {
     }
 }
 
-/** Pratinjau gambar; ketuk untuk membuka layar penuh. */
+/**
+ * Pratinjau gambar; ketuk untuk membuka layar penuh.
+ *
+ * Hanya [ImageBitmap] hasil decode yang disimpan di state — bytes berkas tidak
+ * pernah ditahan di heap, dan decode-nya berjalan di IO.
+ */
 @Composable
 private fun ImageBlock(target: File) {
-    var bytes by remember(target.path) { mutableStateOf<ByteArray?>(null) }
+    var bitmap by remember(target.path) { mutableStateOf<ImageBitmap?>(null) }
     var failed by remember(target.path) { mutableStateOf(false) }
     var full by remember { mutableStateOf(false) }
     LaunchedEffect(target.path) {
-        val loaded = withContext(Dispatchers.IO) { runCatching { target.readBytes() }.getOrNull() }
-        bytes = loaded
-        failed = loaded == null
+        val decoded = withContext(Dispatchers.IO) { decodePreviewFile(target, THUMB_PX) }
+        bitmap = decoded
+        failed = decoded == null
     }
-    val bitmap = remember(bytes) { bytes?.let { decodePreview(it) } }
     when {
         bitmap != null -> {
             Image(
-                bitmap = bitmap,
+                bitmap = bitmap as ImageBitmap,
                 contentDescription = target.name,
                 contentScale = ContentScale.FillWidth,
                 modifier = Modifier
@@ -128,8 +153,7 @@ private fun ImageBlock(target: File) {
                     .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
                     .clickable { full = true },
             )
-            val data = bytes
-            if (full && data != null) ImagePreviewDialog(data, onDismiss = { full = false })
+            if (full) ImagePreviewDialog(target, onDismiss = { full = false })
         }
         failed -> Text(
             I18n.s.previewFail,
@@ -143,6 +167,7 @@ private fun ImageBlock(target: File) {
 /** Pemutar video inline dengan pengendali bawaan Android. */
 @Composable
 private fun VideoBlock(target: File) {
+    // Holder array, bukan state: factory AndroidView bukan tempat menulis state.
     val holder = remember(target.path) { arrayOfNulls<VideoView>(1) }
     var playing by remember(target.path) { mutableStateOf(false) }
     DisposableEffect(target.path) {
@@ -205,7 +230,8 @@ private fun FileRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            if (file.kind == ChatFile.Kind.VIDEO) Icons.Default.PlayArrow else Icons.AutoMirrored.Filled.InsertDriveFile,
+            if (file.kind == ChatFile.Kind.VIDEO) Icons.Default.PlayArrow
+            else Icons.AutoMirrored.Filled.InsertDriveFile,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.primary,
             modifier = Modifier.size(18.dp),

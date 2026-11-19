@@ -3,6 +3,8 @@ package com.arkacode.app.core
 import com.arkacode.app.net.ChatFile
 import com.arkacode.app.net.ChatItem
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TurnFilesMergeTest {
@@ -26,5 +28,25 @@ class TurnFilesMergeTest {
         val asisten = ChatItem.Assistant("a1", listOf("ok"), emptyList(), emptyList())
         val hasil = mergeTurnFiles(listOf(asisten)) { emptyList() }
         assertEquals(emptyList<ChatFile>(), hasil.filterIsInstance<ChatItem.Assistant>().single().files)
+    }
+
+    @Test
+    fun `tanpa asisten baru tidak ada id untuk menyimpan berkas`() {
+        val lama = ChatItem.Assistant("a1", listOf("ok"), emptyList(), emptyList())
+        assertNull(newAssistantId(listOf(lama), setOf("a1")))
+        val baru = ChatItem.Assistant("a2", listOf("x"), emptyList(), emptyList())
+        assertEquals("a2", newAssistantId(listOf(lama, baru), setOf("a1")))
+    }
+
+    @Test
+    fun `asisten yang hanya membawa berkas bukan balasan kosong`() {
+        val asisten = ChatItem.Assistant(
+            "a1",
+            emptyList(),
+            emptyList(),
+            emptyList(),
+            files = listOf(ChatFile("x.png", "x.png", 1, "image/png")),
+        )
+        assertTrue(hasBody(asisten))
     }
 }

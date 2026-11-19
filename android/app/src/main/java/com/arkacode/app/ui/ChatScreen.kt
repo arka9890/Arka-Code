@@ -906,7 +906,7 @@ private fun AssistantBubble(item: ChatItem.Assistant, sessionRoot: File) {
                     Spacer(Modifier.height(4.dp))
                 }
                 if (item.texts.isEmpty() && item.reasonings.isEmpty() &&
-                    item.tools.isEmpty() && item.error == null
+                    item.tools.isEmpty() && item.files.isEmpty() && item.error == null
                 ) {
                     Text(
                         I18n.s.emptyReply,
