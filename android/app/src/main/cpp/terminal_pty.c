@@ -96,7 +96,8 @@ Java_com_arkacode_app_core_TerminalPty_nativeSpawn(
     int slave = -1;
     pid_t pid;
 
-    master = posix_openpt(O_RDWR | O_NOCTTY);
+    // O_CLOEXEC: master tidak boleh bocor ke proot tab lain lewat fork/exec.
+    master = posix_openpt(O_RDWR | O_NOCTTY | O_CLOEXEC);
     if (master < 0) {
         LOGE("posix_openpt gagal: %s", strerror(errno));
         goto fail;
@@ -110,7 +111,8 @@ Java_com_arkacode_app_core_TerminalPty_nativeSpawn(
         LOGE("ptsname gagal: %s", strerror(errno));
         goto fail;
     }
-    slave = open(slave_name, O_RDWR | O_NOCTTY);
+    // O_CLOEXEC juga di slave: hanya fd 0/1/2 hasil dup2 yang ikut exec.
+    slave = open(slave_name, O_RDWR | O_NOCTTY | O_CLOEXEC);
     if (slave < 0) {
         LOGE("open slave gagal: %s", strerror(errno));
         goto fail;
@@ -124,13 +126,20 @@ Java_com_arkacode_app_core_TerminalPty_nativeSpawn(
 
     if (pid == 0) {
         /* Anak: jadikan pty slave sebagai controlling terminal, lalu exec. */
-        setsid();
+        // Gagal setsid = bukan pemimpin sesi; induk nanti memakai kill(-pid),
+        // jadi jangan lanjut exec (pid bisa menunjuk grup proses lain).
+        if (setsid() < 0) _exit(127);
         ioctl(slave, TIOCSCTTY, 0);
         dup2(slave, STDIN_FILENO);
         dup2(slave, STDOUT_FILENO);
         dup2(slave, STDERR_FILENO);
         if (slave > STDERR_FILENO) close(slave);
         close(master);
+        // Mask sinyal warisan thread pemanggil bisa memblokir SIGCHLD/job
+        // control di shell; execve sendiri tidak mereset mask.
+        sigset_t empty_mask;
+        sigemptyset(&empty_mask);
+        sigprocmask(SIG_SETMASK, &empty_mask, NULL);
         if (cwd != NULL) {
             if (chdir(cwd) != 0) {
                 /* cwd hilang bukan alasan batal: shell tetap bisa jalan di "/". */
@@ -181,7 +190,9 @@ Java_com_arkacode_app_core_TerminalPty_nativeSignal(
     (void) env;
     (void) clazz;
     if (pid <= 0) return;
-    kill((pid_t) pid, sig);
+    // Anak adalah pemimpin sesi/grup (setsid), jadi -pid = seluruh grup:
+    // shell + proot + turunannya ikut berhenti, bukan hanya proot.
+    kill(-(pid_t) pid, sig);
 }
 
 JNIEXPORT jint JNICALL
