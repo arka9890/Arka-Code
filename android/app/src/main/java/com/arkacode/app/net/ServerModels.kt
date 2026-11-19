@@ -15,6 +15,55 @@ data class ChatSession(
 /** Satu tool-call dalam balasan assistant. */
 data class ToolUse(val id: String, val name: String, val status: String)
 
+/**
+ * Berkas hasil model yang bisa dilihat, diunduh, atau dibagikan dari chat.
+ *
+ * [path] selalu relatif terhadap folder sesi (`workspace/sessions/<sid>`),
+ * tidak pernah absolut — UI yang menyambungnya ke folder sesi saat render.
+ */
+data class ChatFile(
+    val path: String,
+    val name: String,
+    val size: Long,
+    val mime: String,
+) {
+    enum class Kind { IMAGE, VIDEO, OTHER }
+
+    val kind: Kind
+        get() = when {
+            mime.startsWith("image/") -> Kind.IMAGE
+            mime.startsWith("video/") -> Kind.VIDEO
+            else -> Kind.OTHER
+        }
+
+    companion object {
+        private val MIME_BY_EXT = mapOf(
+            "png" to "image/png",
+            "jpg" to "image/jpeg",
+            "jpeg" to "image/jpeg",
+            "webp" to "image/webp",
+            "gif" to "image/gif",
+            "mp4" to "video/mp4",
+            "webm" to "video/webm",
+            "pdf" to "application/pdf",
+            "zip" to "application/zip",
+            "json" to "application/json",
+            "txt" to "text/plain",
+            "md" to "text/plain",
+            "log" to "text/plain",
+            "kt" to "text/plain",
+            "java" to "text/plain",
+            "sh" to "text/plain",
+        )
+
+        /** MIME dari ekstensi nama berkas; ekstensi tak dikenal → octet-stream. */
+        fun mimeOf(name: String): String {
+            val ext = name.substringAfterLast('.', "").lowercase()
+            return MIME_BY_EXT[ext] ?: "application/octet-stream"
+        }
+    }
+}
+
 /** Item chat siap-render. */
 sealed interface ChatItem {
     val id: String
@@ -27,6 +76,8 @@ sealed interface ChatItem {
         val tools: List<ToolUse>,
         val finish: String? = null,
         val error: String? = null,
+        /** Berkas yang lahir di giliran ini (hasil diff folder sesi atau part `file`). */
+        val files: List<ChatFile> = emptyList(),
     ) : ChatItem
 
     /** synthetic/system/dll — tampil kecil. */

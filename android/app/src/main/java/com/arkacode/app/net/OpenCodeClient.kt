@@ -385,7 +385,7 @@ class OpenCodeClient(
             el.dataArray().mapNotNull { item -> parseMessage(item) }.asReversed()
         }
 
-    private fun parseMessage(item: JsonElement): ChatItem? {
+    internal fun parseMessage(item: JsonElement): ChatItem? {
         val o = item as? JsonObject ?: return null
         // Toleran dua bentuk: { id, type, content:[...] } (wrapper) maupun
         // { info:{...}, parts:[...] } (MessageV2.WithParts).
@@ -410,6 +410,7 @@ class OpenCodeClient(
                 val texts = mutableListOf<String>()
                 val reasonings = mutableListOf<String>()
                 val tools = mutableListOf<ToolUse>()
+                val files = mutableListOf<ChatFile>()
                 for (part in parts) {
                     val p = part as? JsonObject ?: continue
                     when (p.str("type")) {
@@ -419,6 +420,7 @@ class OpenCodeClient(
                             val st = p.obj("state").str("status") ?: ""
                             tools.add(ToolUse(p.str("id") ?: "", p.str("name") ?: "tool", st))
                         }
+                        "file" -> chatFileFromPart(p)?.let { files.add(it) }
                     }
                 }
                 val finish = meta.str("finish") ?: o.str("finish")
@@ -426,9 +428,10 @@ class OpenCodeClient(
                     ?: meta.str("error")?.takeIf { it.isNotBlank() }
                     ?: o.obj("error").str("message")?.takeIf { it.isNotBlank() }
                     ?: o.str("error")?.takeIf { it.isNotBlank() }
-                val hasBody = texts.isNotEmpty() || reasonings.isNotEmpty() || tools.isNotEmpty()
+                val hasBody = texts.isNotEmpty() || reasonings.isNotEmpty() || tools.isNotEmpty() ||
+                    files.isNotEmpty()
                 if (!hasBody && err == null && finish == null) null
-                else ChatItem.Assistant(id, texts, reasonings, tools, finish, err)
+                else ChatItem.Assistant(id, texts, reasonings, tools, finish, err, files)
             }
             "synthetic", "system" -> {
                 val text = meta.str("text") ?: meta.str("description")
@@ -437,6 +440,41 @@ class OpenCodeClient(
             }
             else -> null
         }
+    }
+
+    /**
+     * Part `{type:"file", mime, filename, url}` → [ChatFile].
+     *
+     * `url` yang menunjuk berkas di dalam workspace dipetakan ke path relatif
+     * terhadap folder sesi; `url` lain dipakai apa adanya (UI akan menolaknya
+     * kalau bukan path lokal). Part `data:` diabaikan: isinya base64 dan
+     * parser ini tidak memegang `Context` untuk menyimpannya.
+     */
+    private fun chatFileFromPart(p: JsonObject): ChatFile? {
+        val name = (p.str("filename") ?: p.str("name"))?.takeIf { it.isNotBlank() } ?: return null
+        val url = p.str("url")?.takeIf { it.isNotBlank() } ?: return null
+        if (url.startsWith("data:")) return null
+        val path = workspaceRelative(url) ?: return null
+        val mime = p.str("mime")?.takeIf { it.isNotBlank() } ?: ChatFile.mimeOf(name)
+        return ChatFile(path, name, 0L, mime)
+    }
+
+    /**
+     * `file:///root/workspace/sessions/<sid>/a/b.png` → `a/b.png`.
+     * URL tanpa segmen `/sessions/` dikembalikan tanpa skema `file://`.
+     */
+    private fun workspaceRelative(url: String): String? {
+        val cleaned = url.substringBefore('?')
+        val marker = "/sessions/"
+        val i = cleaned.indexOf(marker)
+        if (i < 0) {
+            val bare = cleaned.removePrefix("file://")
+            return bare.substringAfterLast('/').takeIf { it.isNotBlank() }?.let { bare }
+        }
+        val rest = cleaned.substring(i + marker.length)
+        val slash = rest.indexOf('/')
+        if (slash < 0 || slash == rest.length - 1) return null
+        return rest.substring(slash + 1)
     }
 
     /**
