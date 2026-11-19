@@ -128,11 +128,14 @@ class TerminalSession(
      *
      * Tanpa pelepasan jatah, byte yang sudah tergambar di WebView yang lalu
      * musnah tidak pernah di-ack, jadi pembaca pty berhenti permanen di jatah
-     * 8 MB dan shell membeku sampai sesi di-restart.
+     * 8 MB dan shell membeku sampai sesi di-restart. Snapshot diambil lebih dulu:
+     * byte yang tercatat sesudah snapshot offset-nya lebih besar dari penanda,
+     * jadi tidak ikut tersaring dan jatahnya tidak hilang.
      */
     fun reattach(): Pair<ByteArray, Long> {
+        val snapshot = replayBuffer.snapshotWithTotal()
         releaseAllBudget()
-        return replayBuffer.snapshotWithTotal()
+        return snapshot
     }
 
     /** SIGHUP, jeda singkat, lalu SIGKILL; fd ditutup sekali saja. */

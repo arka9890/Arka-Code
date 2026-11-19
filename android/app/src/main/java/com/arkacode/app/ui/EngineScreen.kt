@@ -146,6 +146,29 @@ fun EngineScreen(
     val terminalContainers = remember { File(context.filesDir, "containers").apply { mkdirs() } }
 
     /**
+     * Tiket pembukaan terminal. `open()` berjalan di IO, jadi permintaan lama
+     * bisa selesai setelah tab ditutup; tiket naik tiap buka/tutup sehingga
+     * hasil yang tidak lagi relevan bisa dibuang.
+     */
+    val openTicket = remember { intArrayOf(0) }
+
+    /** Tutup tab terminal (tombol tutup maupun tombol Back). */
+    fun closeTerminal() {
+        openTicket[0]++
+        TerminalHost.stop()
+        showTerminal = false
+    }
+
+    // Proses baru: rememberSaveable memulihkan overlay, tapi sesi pty tidak ikut
+    // dipulihkan — tanpa ini layar menulis "memulai…" selamanya tanpa sesi.
+    LaunchedEffect(Unit) {
+        if (showTerminal && !TerminalHost.hasSession()) {
+            showTerminal = false
+            terminalNotice = null
+        }
+    }
+
+    /**
      * Buka tab Terminal. Bisa dipakai walau server engine tidak jalan: yang
      * dibutuhkan cuma rootfs + binary proot. Runtime Termux tidak punya pty
      * yang bisa dialirkan balik ke app, jadi layarnya hanya menjelaskan itu.
@@ -155,6 +178,8 @@ fun EngineScreen(
      * pengguna langsung melihat status "memulai…".
      */
     fun openTerminal() {
+        val myTicket = openTicket[0]
+        openTicket[0]++
         terminalEpoch++
         showTerminal = true
         if (engine.runtimeMode != com.arkacode.app.core.RuntimeMode.PROOT) {
@@ -168,6 +193,12 @@ fun EngineScreen(
         scope.launch {
             val ok = withContext(Dispatchers.IO) {
                 TerminalHost.open(engine.currentDistro(), terminalWorkspace, terminalContainers)
+            }
+            // Tab bisa sudah ditutup / di-restart saat open() masih jalan:
+            // sesi yang tak dipakai siapa pun hanya mengunci rootfs tanpa layar.
+            if (openTicket[0] != myTicket) {
+                TerminalHost.stop()
+                return@launch
             }
             if (!ok) terminalNotice = I18n.s.terminalNotReady
         }
@@ -567,8 +598,7 @@ fun EngineScreen(
             // Didaftarkan setelah BackHandler layar di dalam `when`, jadi tombol
             // Back menutup terminal dulu sebelum menutup overlay di bawahnya.
             BackHandler {
-                TerminalHost.stop()
-                showTerminal = false
+                closeTerminal()
             }
             // `key(terminalEpoch)`: Restart/membuka ulang memasang WebView baru,
             // dan halaman hanya memutar `replay` sekali per muat. Tanpa key,
@@ -587,19 +617,23 @@ fun EngineScreen(
                     onResize = TerminalHost::resize,
                     onAck = TerminalHost::ack,
                     onRestart = {
-                        val ok = TerminalHost.restart(
-                            engine.currentDistro(),
-                            terminalWorkspace,
-                            terminalContainers,
-                        )
-                        // Gagal restart berarti tidak ada pty: tanpa pesan ini
-                        // layar hanya menulis "memulai…" selamanya.
-                        terminalNotice = if (ok) null else I18n.s.terminalNotReady
+                        terminalNotice = null
                         terminalEpoch++
+                        scope.launch {
+                            val ok = withContext(Dispatchers.IO) {
+                                TerminalHost.restart(
+                                    engine.currentDistro(),
+                                    terminalWorkspace,
+                                    terminalContainers,
+                                )
+                            }
+                            // Gagal restart berarti tidak ada pty: tanpa pesan ini
+                            // layar hanya menulis "memulai…" selamanya.
+                            if (!ok) terminalNotice = I18n.s.terminalNotReady
+                        }
                     },
                     onClose = {
-                        TerminalHost.stop()
-                        showTerminal = false
+                        closeTerminal()
                     },
                     notice = terminalNotice,
                 )

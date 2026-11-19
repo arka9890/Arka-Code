@@ -143,24 +143,22 @@ object TerminalHost {
     /**
      * Layar terminal dipasang kembali (mutasi komposisi / rotasi).
      *
-     * Mengembalikan isi layar terakhir dan menandai offset itu sebagai sudah
-     * diputar ulang, lalu mengosongkan kanal dari potongan yang isinya sudah
-     * pasti ikut di replay. Urutan ini penting: snapshot dulu (kunci yang sama
-     * menahan [TerminalSession] saat merekam), lalu kuras kanal — potongan yang
-     * tercatat sebelum snapshot tapi belum terkirim tetap tertangkap penanda
-     * offset, jadi tidak ada byte yang hilang maupun tampil dua kali.
+     * Mengembalikan isi layar terakhir dan menandai offset akhirnya sebagai
+     * sudah diputar ulang. Kanal TIDAK dikuras di sini: potongan yang isinya
+     * sudah ikut snapshot tersaring sendiri oleh [output] lewat penanda offset,
+     * sedangkan potongan yang datang sesudah snapshot tetap di kanal dan harus
+     * tetap sampai ke layar. Menguras kanal akan membuang byte yang belum ada
+     * di snapshot (mis. saat rotasi di tengah `yes`).
      */
     fun reattach(): ByteArray = synchronized(lock) {
-        val live = session
-        if (live == null) {
-            drainChannel()
-            return ByteArray(0)
-        }
+        val live = session ?: return ByteArray(0)
         val (snapshot, total) = live.reattach()
-        drainChannel()
         replayed.set(total)
         snapshot
     }
+
+    /** Ada sesi hidup (dipakai layar terminal setelah proses dipulihkan). */
+    fun hasSession(): Boolean = synchronized(lock) { session != null }
 
     fun replay(): ByteArray = synchronized(lock) { session?.replay() ?: ByteArray(0) }
 

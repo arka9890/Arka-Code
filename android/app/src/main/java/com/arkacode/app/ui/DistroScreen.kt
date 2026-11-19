@@ -83,9 +83,8 @@ fun DistroScreen(
     // Sesi terminal diumpankan sebagai state Compose supaya perubahan
     // (Starting → Running → Exited) memicu recomposisi; nilainya sendiri dibaca
     // langsung tiap komposisi karena distro aktif juga ikut menentukan.
-    @Suppress("UNUSED_VARIABLE")
     val terminalState by com.arkacode.app.core.TerminalHost.state.collectAsState()
-    val terminalBusy = terminalRunning()
+    val terminalBusy = terminalState.let { terminalRunning() }
 
     var runtime by remember { mutableStateOf(RuntimeMode.PROOT) }
     var distroId by remember { mutableStateOf(DistroCatalog.ALPINE_320.id) }
