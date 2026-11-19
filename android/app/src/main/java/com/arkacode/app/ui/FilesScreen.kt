@@ -52,7 +52,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -518,12 +517,3 @@ private fun FileView(path: String, content: String, imageBytes: ByteArray?) {
         }
     }
 }
-
-private fun decodePreview(bytes: ByteArray): androidx.compose.ui.graphics.ImageBitmap? = runCatching {
-    val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-    var sample = 1
-    while (bounds.outWidth / sample > 2048 || bounds.outHeight / sample > 2048) sample *= 2
-    val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
-    android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)?.asImageBitmap()
-}.getOrNull()

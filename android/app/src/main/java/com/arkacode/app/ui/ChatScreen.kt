@@ -91,9 +91,11 @@ import com.arkacode.app.core.ModelSupport
 import com.arkacode.app.core.PromptExpander
 import com.arkacode.app.core.SessionRunRegistry
 import com.arkacode.app.core.SlashSuggest
+import com.arkacode.app.core.VirtualFs
 import com.arkacode.app.core.MemoryStore
 import com.arkacode.app.core.SessionMemory
 import com.arkacode.app.core.compressChatContext
+import java.io.File
 import com.arkacode.app.net.AgentInfo
 import com.arkacode.app.net.ChatItem
 import com.arkacode.app.net.CommandInfo
@@ -453,6 +455,9 @@ fun ChatScreen(
             if (showFilesTab) {
                 FilesPane(port = port, password = password, modifier = Modifier.weight(1f))
             } else {
+                // Folder sesi: tempat berkas hasil model mendarat. Dipakai kartu
+                // berkas untuk mengubah path relatif jadi berkas sungguhan.
+                val sessionRoot = remember(sessionId) { VirtualFs(context).workspaceDir(sessionId) }
                 LazyColumn(
                     state = listState,
                     modifier = Modifier
@@ -470,7 +475,7 @@ fun ChatScreen(
                 }) { item ->
                     when (item) {
                         is ChatItem.User -> UserBubble(item, onRevert = { openRevert(item.id) })
-                        is ChatItem.Assistant -> AssistantBubble(item)
+                        is ChatItem.Assistant -> AssistantBubble(item, sessionRoot)
                         is ChatItem.Note -> NoteRow(item)
                     }
                 }
@@ -500,6 +505,7 @@ fun ChatScreen(
                                     reasonings = listOf(liveReasoning).filter { it.isNotBlank() },
                                     tools = emptyList(),
                                 ),
+                                sessionRoot,
                             )
                         } else {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -527,6 +533,7 @@ fun ChatScreen(
                                 reasonings = listOf(liveReasoning).filter { it.isNotBlank() },
                                 tools = emptyList(),
                             ),
+                            sessionRoot,
                         )
                     }
                 }
@@ -871,7 +878,7 @@ private fun UserBubble(item: ChatItem.User, onRevert: () -> Unit) {
 }
 
 @Composable
-private fun AssistantBubble(item: ChatItem.Assistant) {
+private fun AssistantBubble(item: ChatItem.Assistant, sessionRoot: File) {
     val context = LocalContext.current
     var copied by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(6.dp, 20.dp, 20.dp, 20.dp)
@@ -957,6 +964,10 @@ private fun AssistantBubble(item: ChatItem.Assistant) {
                             )
                         }
                     }
+                    Spacer(Modifier.height(4.dp))
+                }
+                if (item.files.isNotEmpty()) {
+                    ChatFileCards(item.files, sessionRoot)
                     Spacer(Modifier.height(4.dp))
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
