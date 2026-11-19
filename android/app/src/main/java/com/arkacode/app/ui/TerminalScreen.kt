@@ -110,19 +110,28 @@ fun TerminalScreen(
     val resizeNow = rememberUpdatedState(onResize)
     val ackNow = rememberUpdatedState(onAck)
     val replayNow = rememberUpdatedState(replay)
+    // Flow `output` boleh berganti identitas tiap recompose (mis. `receiveAsFlow()`
+    // inline). Kolektor tidak boleh ikut restart — potongan yang sudah diambil
+    // kolektor lama bisa hilang diam-diam.
+    val outputNow = rememberUpdatedState(output)
 
     var ctrl by remember { mutableStateOf(false) }
     var alt by remember { mutableStateOf(false) }
     var pageReady by remember { mutableStateOf(false) }
 
-    /** Kirim byte ke pty; sticky Ctrl/Alt lepas setelah satu kiriman. */
-    fun send(bytes: ByteArray) {
+    /** Karakter (ketikan xterm, aksi karakter): sticky Ctrl/Alt dipakai lalu lepas. */
+    fun sendChar(bytes: ByteArray) {
         if (bytes.isEmpty()) return
         val c = ctrl
         val a = alt
         ctrl = false
         alt = false
         inputNow.value(applyModifiers(bytes, c, a))
+    }
+
+    /** Tombol kunci non-karakter (Esc, Tab, panah, PgUp/PgDn): apa adanya, sticky tetap menyala. */
+    fun sendKey(bytes: ByteArray) {
+        if (bytes.isNotEmpty()) inputNow.value(bytes)
     }
 
     val webView = remember {
@@ -132,7 +141,7 @@ fun TerminalScreen(
             settings.domStorageEnabled = true
             addJavascriptInterface(
                 TerminalBridge(
-                    { send(it) },
+                    { sendChar(it) },
                     { rows, cols -> resizeNow.value(rows, cols) },
                     { bytes -> ackNow.value(bytes) },
                 ),
@@ -148,9 +157,11 @@ fun TerminalScreen(
         }
     }
 
-    LaunchedEffect(webView, pageReady, output) {
+    // `output` sengaja tidak jadi key: identitas Flow tidak boleh me-restart
+    // kolektor. `rememberUpdatedState` memberi flow terbaru tanpa restart.
+    LaunchedEffect(webView, pageReady) {
         if (!pageReady) return@LaunchedEffect
-        output.collect { chunk -> webView.termWrite(chunk) }
+        outputNow.value.collect { chunk -> webView.termWrite(chunk) }
     }
 
     /** Tempel isi clipboard apa adanya (bukan satu karakter, jadi sticky tidak dipakai). */
@@ -248,6 +259,7 @@ fun TerminalScreen(
                 .padding(horizontal = 4.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // Kunci non-karakter: tidak memakai/mematikan sticky Ctrl/Alt.
             val keys = listOf(
                 "Esc" to byteArrayOf(0x1b),
                 "Tab" to byteArrayOf(0x09),
@@ -257,13 +269,25 @@ fun TerminalScreen(
                 "→" to "\u001b[C".toByteArray(),
                 "PgUp" to "\u001b[5~".toByteArray(),
                 "PgDn" to "\u001b[6~".toByteArray(),
+            )
+            keys.forEach { (label, bytes) ->
+                TextButton(
+                    onClick = { sendKey(bytes) },
+                    contentPadding = PaddingValues(horizontal = 8.dp),
+                    modifier = Modifier.height(36.dp),
+                ) {
+                    Text(label, style = MaterialTheme.typography.labelMedium)
+                }
+            }
+            // Kontrol karakter: dihitung sebagai satu karakter (memakai sticky).
+            val controlKeys = listOf(
                 "Ctrl-C" to byteArrayOf(0x03),
                 "Ctrl-D" to byteArrayOf(0x04),
                 "Ctrl-Z" to byteArrayOf(0x1a),
             )
-            keys.forEach { (label, bytes) ->
+            controlKeys.forEach { (label, bytes) ->
                 TextButton(
-                    onClick = { send(bytes) },
+                    onClick = { sendChar(bytes) },
                     contentPadding = PaddingValues(horizontal = 8.dp),
                     modifier = Modifier.height(36.dp),
                 ) {
